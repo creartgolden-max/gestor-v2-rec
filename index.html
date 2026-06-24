@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestor de Proyectos v2 — Motor de Tareas Diarias · Recouromex</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#1a2e22;
+    --green:#0F2818;        /* verde forest Recouromex */
+    --green-deep:#0a1c11;
+    --accent:#C9A961;       /* dorado Recouromex */
+    --accent-deep:#a8873f;
+    --paper:#f4f1ea;
+    --card:#ffffff;
+    --line:#d9d3c6;
+    --ok:#2e7d4f;
+    --warn:#c9952b;
+    --bad:#b53a2e;
+    --muted:#6b6457;
+    --shadow:0 1px 3px rgba(15,40,24,.08),0 8px 24px rgba(15,40,24,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:Georgia,'Times New Roman',serif;
+    background:
+      radial-gradient(1200px 600px at 80% -10%,rgba(201,169,97,.12),transparent 60%),
+      linear-gradient(180deg,#efeae0,#f4f1ea);
+    color:var(--ink);min-height:100vh;padding:28px 18px 70px;
+  }
+  .wrap{max-width:1120px;margin:0 auto}
+  header.top{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    border-bottom:3px solid var(--green);padding-bottom:16px;margin-bottom:18px;flex-wrap:wrap;gap:14px;
+  }
+  .brand .eyebrow{font-family:Arial,Helvetica,sans-serif;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent-deep);font-weight:700}
+  .brand h1{font-size:27px;color:var(--green);letter-spacing:.5px;line-height:1.1;margin-top:4px}
+  .brand .sub{font-family:Arial,sans-serif;font-size:13px;color:var(--muted);margin-top:5px}
+  .person{text-align:right;font-family:Arial,sans-serif}
+  .person .lbl{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .person .name{font-family:Georgia,serif;font-size:19px;color:var(--ink);font-weight:bold;margin-top:2px}
+  .person .role{font-size:12px;color:var(--accent-deep);margin-top:2px}
+
+  .ctrlbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 16px;margin-bottom:16px;font-family:Arial,sans-serif;font-size:12px;box-shadow:var(--shadow)}
+  .ctrlbar .who{color:var(--muted)} .ctrlbar .who b{color:var(--green);font-family:Georgia,serif;font-size:14px}
+  .ctrlbar select{font-family:Georgia,serif;font-size:13px;color:var(--green);border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fff;cursor:pointer;margin-left:6px}
+  .pill2{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;margin-left:6px;letter-spacing:.04em;text-transform:uppercase;background:rgba(15,40,24,.1);color:var(--green)}
+
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .tab{font-family:Arial,sans-serif;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--green);padding:9px 16px;border-radius:10px;transition:.15s}
+  .tab.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .tab:hover:not(.on){border-color:var(--green)}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
+  .stat .k{font-family:Arial,sans-serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .stat .v{font-family:Georgia,serif;font-size:34px;font-weight:bold;line-height:1.1;margin-top:4px}
+  .stat .s{font-family:Arial,sans-serif;font-size:11px;color:var(--muted);margin-top:2px}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
+  .card .chead{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,#fbfaf6,#f6f3ec);gap:10px;flex-wrap:wrap}
+  .card .chead .t{font-size:18px;color:var(--green)}
+  .card .chead .t small{display:block;font-family:Arial,sans-serif;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:3px}
+  .clist{padding:6px 0}
+  .trow{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px dashed var(--line)}
+  .trow:last-child{border-bottom:none}
+  .trow .chk{width:22px;height:22px;flex:0 0 auto;cursor:pointer;accent-color:var(--green)}
+  .trow .body{flex:1;min-width:0}
+  .trow .ti{font-size:15px}
+  .trow .ti.done{text-decoration:line-through;color:var(--muted)}
+  .trow .de{font-family:Arial,sans-serif;font-size:12px;color:var(--muted);margin-top:2px}
+  .trow .meta{font-family:Arial,sans-serif;font-size:11px;color:var(--muted);margin-top:3px}
+  .tagad{display:inline-block;font-family:Arial,sans-serif;font-size:10px;font-weight:700;letter-spacing:.05em;padding:2px 9px;border-radius:20px;background:var(--accent);color:#3a2d05;margin-top:4px}
+  .tagrut{display:inline-block;font-family:Arial,sans-serif;font-size:10px;letter-spacing:.05em;padding:2px 8px;border-radius:20px;background:rgba(15,40,24,.08);color:var(--green);margin-top:4px}
+  .lock{font-family:Arial,sans-serif;font-size:12px;color:var(--bad);font-weight:700}
+  .empty{font-family:Arial,sans-serif;font-size:13px;color:var(--muted);font-style:italic;padding:16px 20px}
+
+  table.grid{width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:13px}
+  table.grid th{text-align:left;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:10px 20px;border-bottom:1px solid var(--line)}
+  table.grid td{padding:11px 20px;border-bottom:1px dashed var(--line)}
+  table.grid tr:last-child td{border-bottom:none}
+  table.grid td .nm{font-family:Georgia,serif;font-size:14px;color:var(--ink)}
+  .pct{font-family:Georgia,serif;font-weight:bold;font-size:16px}
+
+  button.act{font-family:Arial,sans-serif;font-size:13px;letter-spacing:.03em;cursor:pointer;border:1px solid var(--green);background:var(--green);color:#fff;padding:9px 16px;border-radius:9px;transition:.15s}
+  button.act.ghost{background:transparent;color:var(--green)}
+  button.act.gold{background:var(--accent);border-color:var(--accent-deep);color:#3a2d05}
+  button.act.danger{background:#fff;border-color:var(--bad);color:var(--bad)}
+  button.act.sm{padding:6px 12px;font-size:12px}
+  button.act:disabled{opacity:.5;cursor:not-allowed}
+  button.act:hover:not(:disabled){filter:brightness(.94)}
+  .rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+
+  .overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(10,28,17,.96),rgba(15,40,24,.96));padding:20px}
+  .overlay.hidden{display:none}
+  .loginbox{background:var(--card);border-radius:18px;box-shadow:0 20px 60px rgba(0,0,0,.35);width:100%;max-width:380px;padding:32px 30px;text-align:center}
+  .loginbox .eyebrow{font-family:Arial,sans-serif;font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent-deep);font-weight:700}
+  .loginbox h2{font-family:Georgia,serif;font-size:23px;color:var(--green);margin:8px 0 4px}
+  .loginbox p{font-family:Arial,sans-serif;font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:18px}
+  .loginbox input{width:100%;font-family:Arial,sans-serif;font-size:22px;letter-spacing:.4em;text-align:center;padding:12px;border:1px solid var(--line);border-radius:10px;margin-bottom:14px}
+  .loginbox button{width:100%;font-family:Arial,sans-serif;font-size:14px;font-weight:700;cursor:pointer;border:none;background:var(--green);color:#fff;padding:13px;border-radius:10px}
+  .loginbox button:hover{background:var(--green-deep)}
+  .loginbox .msg{font-family:Arial,sans-serif;font-size:12.5px;margin-top:14px;min-height:18px}
+  .loginbox .msg.err{color:var(--bad)} .loginbox .msg.info{color:var(--muted)}
+
+  /* modal generico */
+  .mwrap{position:fixed;inset:0;z-index:1050;display:flex;align-items:center;justify-content:center;background:rgba(10,28,17,.55);padding:20px}
+  .mwrap.hidden{display:none}
+  .mbox{background:var(--card);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.35);width:100%;max-width:440px;padding:26px 26px 22px}
+  .mbox h3{font-family:Georgia,serif;font-size:20px;color:var(--green);margin-bottom:4px}
+  .mbox .mp{font-family:Arial,sans-serif;font-size:12.5px;color:var(--muted);margin-bottom:16px;line-height:1.5}
+  .fld{margin-bottom:13px;font-family:Arial,sans-serif}
+  .fld label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .fld input,.fld select,.fld textarea{width:100%;font-family:Arial,sans-serif;font-size:14px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;color:var(--ink)}
+  .fld textarea{min-height:70px;resize:vertical}
+  .fld.chkline{display:flex;align-items:center;gap:9px}
+  .fld.chkline input{width:auto}
+  .fld.chkline label{margin-bottom:0;text-transform:none;letter-spacing:0;font-size:13px;color:var(--ink)}
+  .mbtns{display:flex;gap:10px;justify-content:flex-end;margin-top:18px}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);background:var(--green-deep);color:#fff;font-family:Arial,sans-serif;font-size:13px;padding:13px 22px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;transition:.25s;z-index:1100;max-width:90vw;text-align:center}
+  .toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+  .toast.err{background:var(--bad)} .toast.ok{background:var(--ok)}
+  .note{font-family:Arial,sans-serif;font-size:11px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.6}
+  .sechead{font-family:Arial,sans-serif;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent-deep);font-weight:700;padding:10px 20px 0}
+</style>
+</head>
+<body>
+
+<div class="overlay" id="loginOverlay">
+  <div class="loginbox">
+    <div class="eyebrow">Recouromex · Gestor de Proyectos v2</div>
+    <h2>Acceso</h2>
+    <p>Ingresa tu PIN para ver tus tareas del día.</p>
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="••••" autocomplete="off">
+    <button id="pinBtn">Entrar</button>
+    <div class="msg info" id="loginMsg">Conectando…</div>
+  </div>
+</div>
+
+<div class="mwrap hidden" id="modalWrap"><div class="mbox" id="modalBox"></div></div>
+<div id="toast" class="toast"></div>
+
+<div class="wrap" id="app" style="display:none">
+  <div class="ctrlbar">
+    <div class="who">En sesión: <b id="sessUser">—</b><span class="pill2" id="sessPill">—</span></div>
+    <div>
+      Periodo: <select id="periodSel"></select>
+      <button class="act ghost sm" id="logoutBtn" style="margin-left:12px">Salir</button>
+    </div>
+  </div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Recouromex · Motor de Tareas Diarias</div>
+      <h1>Gestor de Proyectos v2</h1>
+      <div class="sub" id="hoyLbl">—</div>
+    </div>
+    <div class="person">
+      <div class="lbl">Sesión</div>
+      <div class="name" id="pName">—</div>
+      <div class="role" id="pRole">—</div>
+    </div>
+  </header>
+
+  <div class="tabs" id="tabs"></div>
+
+  <div id="view"></div>
+
+  <p class="note">
+    Cierre automático: al entrar en un día nuevo, los días anteriores se cierran solos (candado a lo no hecho y % congelado).<br>
+    El % del día se calcula sobre las tareas que cuentan; las tareas en prórroga pendiente no penalizan hasta que Dirección decide.
+  </p>
+</div>
+
+<script>
+/* =====================================================================
+   ███  CONFIG — EDITA SOLO ESTE BLOQUE  ███
+   Rodrigo pega la URL y la ANON key del proyecto PRINCIPAL.
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL:      "PEGAR_AQUI_LA_URL_DE_SUPABASE",   // ej: https://qcwpnovwyhzhqqmhjxco.supabase.co
+  SUPABASE_ANON_KEY: "PEGAR_AQUI_LA_ANON_KEY"           // la llave publica (anon)
+};
+/* ===================================================================== */
+
+let db=null;
+const SESSION={pin:null,id:null,nombre:null,rol:null};
+const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[]};
+let PERIODO=null, currentView=null, supUser=null;
+const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+const cfgOK = CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.startsWith("PEGAR")
+           && CONFIG.SUPABASE_ANON_KEY && !CONFIG.SUPABASE_ANON_KEY.startsWith("PEGAR");
+
+/* ---- helpers ---- */
+function hoyStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function fmtFecha(s){ if(!s) return ''; const p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+function color(v){ return v>=90?'var(--ok)': v>=80?'var(--warn)':'var(--bad)'; }
+function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toast(msg,kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'+(kind?(' '+kind):''); clearTimeout(t._h); t._h=setTimeout(()=>{t.className='toast';},3800); }
+function usuarioNombre(id){ const u=STATE.usuarios.find(x=>x.id===id); return u?u.nombre:('#'+id); }
+function rolLabel(r){ return r==='direccion'?'Dirección': r==='admin'?'Admin': 'Colaborador'; }
+
+/* ---- % calculados ---- */
+function tareasDe(uid){ return STATE.tareas.filter(t=>t.usuario_id===uid); }
+function listaHoy(uid){ const h=hoyStr(); return tareasDe(uid).filter(t=>t.fecha===h && ['pendiente','hecha','reprogramada'].includes(t.estado)); }
+function vencidasDe(uid){ return tareasDe(uid).filter(t=>t.estado==='vencida').sort((a,b)=>a.fecha<b.fecha?-1:1); }
+function prorrogaDe(uid){ return tareasDe(uid).filter(t=>t.estado==='prorroga_solicitada'); }
+function pctDiaVivo(uid){
+  const l=listaHoy(uid); const total=l.length; const hechas=l.filter(t=>t.estado==='hecha').length;
+  const p = total===0?100:Math.round(hechas/total*100);
+  return {total,hechas,p};
+}
+function pctMes(uid){
+  const arr=STATE.cierres.filter(c=>c.usuario_id===uid && String(c.fecha).slice(0,7)===PERIODO);
+  if(!arr.length) return null;
+  return Math.round(arr.reduce((s,c)=>s+Number(c.porcentaje),0)/arr.length);
+}
+
+/* =====================================================================
+   CARGA DE DATOS (incluye el cierre lazy + generar rutinas de hoy)
+   ===================================================================== */
+async function loadData(){
+  const hoy=hoyStr();
+  // 1) cierre lazy de dias previos, 2) generar instancias de rutina de hoy
+  const r1=await db.rpc('gpr2_cerrar_dias_pendientes',{p_hoy:hoy});
+  if(r1.error) console.warn('cerrar_dias:',r1.error.message);
+  const r2=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoy});
+  if(r2.error) console.warn('generar_rutinas:',r2.error.message);
+
+  const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas]=await Promise.all([
+    db.from('gpr2_usuarios_publico').select('*').eq('activo',true),
+    db.from('gpr2_tareas').select('*').eq('activo',true),
+    db.from('gpr2_cierre_dia').select('*'),
+    db.from('gpr2_prorrogas').select('*').eq('estado','pendiente'),
+    db.from('rev_procesos').select('*').eq('activo',true).order('orden'),
+    db.from('gpr2_proyectos_cierre').select('*'),
+    db.from('gpr2_rutinas').select('*').eq('activo',true)
+  ]);
+  for(const r of [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas]) if(r.error) throw r.error;
+  STATE.usuarios=usuarios.data||[];
+  STATE.tareas=tareas.data||[];
+  STATE.cierres=cierres.data||[];
+  STATE.prorrogas=prorrogas.data||[];
+  STATE.procesos=procesos.data||[];
+  STATE.proyCierre=proyCierre.data||[];
+  STATE.rutinas=rutinas.data||[];
+}
+
+/* =====================================================================
+   NAVEGACION
+   ===================================================================== */
+function tabsForRol(rol){
+  if(rol==='colaborador') return [['miDia','Mi día']];
+  if(rol==='admin') return [['miDia','Mi día'],['supervision','Supervisión'],['proyectos','Proyectos']];
+  return [['miDia','Mi día'],['supervision','Supervisión'],['solicitudes','Solicitudes'],['proyectos','Proyectos'],['usuarios','Usuarios']];
+}
+function renderTabs(){
+  const cont=document.getElementById('tabs'); cont.innerHTML='';
+  tabsForRol(SESSION.rol).forEach(([id,lbl])=>{
+    const b=document.createElement('button'); b.className='tab'+(currentView===id?' on':''); b.textContent=lbl;
+    if(id==='solicitudes'){ const n=STATE.prorrogas.length; if(n) b.textContent=lbl+' ('+n+')'; }
+    b.addEventListener('click',()=>{ currentView=id; render(); });
+    cont.appendChild(b);
+  });
+}
+function render(){
+  renderTabs();
+  const v=document.getElementById('view');
+  if(currentView==='miDia') v.innerHTML=viewMiDia(SESSION.id,true);
+  else if(currentView==='supervision') v.innerHTML=viewSupervision();
+  else if(currentView==='solicitudes') v.innerHTML=viewSolicitudes();
+  else if(currentView==='proyectos') v.innerHTML=viewProyectos();
+  else if(currentView==='usuarios') v.innerHTML=viewUsuarios();
+  bindViewEvents();
+}
+
+/* =====================================================================
+   VISTA: MI DIA  (o el dia de un usuario, para supervision)
+   ===================================================================== */
+function taskRow(t,puedeMarcar){
+  const done=t.estado==='hecha';
+  const ad = t.es_alta_direccion? '<span class="tagad">⚡ Solicitud de Alta Dirección</span>':'';
+  const rut = t.tipo==='rutina'? '<span class="tagrut">rutina diaria</span>':'';
+  const de = t.descripcion? '<div class="de">'+esc(t.descripcion)+'</div>':'';
+  const chk = puedeMarcar
+    ? '<input type="checkbox" class="chk" data-mark="'+t.id+'" '+(done?'checked':'')+'>'
+    : '<span style="width:22px;flex:0 0 auto;text-align:center;color:var(--muted)">'+(done?'✓':'·')+'</span>';
+  return '<div class="trow">'+chk+
+    '<div class="body"><div class="ti'+(done?' done':'')+'">'+esc(t.titulo)+'</div>'+de+
+    '<div>'+ad+' '+rut+'</div></div></div>';
+}
+function viewMiDia(uid,propio){
+  const d=pctDiaVivo(uid); const m=pctMes(uid);
+  const hoy=listaHoy(uid).sort((a,b)=> (a.es_alta_direccion?-1:0)-(b.es_alta_direccion?-1:0));
+  const venc=vencidasDe(uid);
+  const pror=prorrogaDe(uid);
+  const puedeMarcar = propio; // solo el dueno marca sus tareas
+  let h='';
+
+  h+='<div class="stats">'+
+    '<div class="stat"><div class="k">% del día (en vivo)</div><div class="v" style="color:'+color(d.p)+'">'+d.p+'%</div><div class="s">'+d.hechas+' de '+d.total+' hechas</div></div>'+
+    '<div class="stat"><div class="k">% del mes ('+MES[parseInt(PERIODO.slice(5))-1]+')</div><div class="v" style="color:'+(m==null?'var(--muted)':color(m))+'">'+(m==null?'—':m+'%')+'</div><div class="s">promedio de días cerrados</div></div>'+
+    '<div class="stat"><div class="k">Vencidas con candado</div><div class="v" style="color:'+(venc.length?'var(--bad)':'var(--ok)')+'">'+venc.length+'</div><div class="s">requieren reprogramar / prórroga</div></div>'+
+    '</div>';
+
+  // tareas de hoy
+  h+='<div class="card"><div class="chead"><div class="t"><small>'+esc(usuarioNombre(uid))+'</small>Tareas de hoy · '+fmtFecha(hoyStr())+'</div>'+
+     (propio?'':'<button class="act sm" data-newtask="'+uid+'">Crear tarea</button>')+'</div><div class="clist">';
+  if(hoy.length) hoy.forEach(t=>{ h+=taskRow(t,puedeMarcar); });
+  else h+='<div class="empty">No hay tareas para hoy.</div>';
+  h+='</div></div>';
+
+  // en prorroga (esperando decision)
+  if(pror.length){
+    h+='<div class="card"><div class="chead"><div class="t"><small>Alta Dirección</small>En prórroga (esperando decisión)</div></div><div class="clist">';
+    pror.forEach(t=>{ h+='<div class="trow"><span style="width:22px;text-align:center">⏳</span><div class="body"><div class="ti">'+esc(t.titulo)+'</div><div class="meta">Fecha original: '+fmtFecha(t.fecha)+' · no cuenta hasta que Dirección decida</div></div></div>'; });
+    h+='</div></div>';
+  }
+
+  // vencidas (candado)
+  h+='<div class="card"><div class="chead"><div class="t"><small>Candado</small>Vencidas 🔒</div></div><div class="clist">';
+  if(venc.length) venc.forEach(t=>{
+    const btn = t.es_alta_direccion
+      ? '<button class="act gold sm" data-prorroga="'+t.id+'">Solicitar prórroga</button>'
+      : (puedeMarcar?'<button class="act ghost sm" data-reprog="'+t.id+'">Reprogramar</button>':'');
+    const ad = t.es_alta_direccion?'<span class="tagad">⚡ Alta Dirección</span>':'';
+    h+='<div class="trow"><span style="width:22px;text-align:center">🔒</span>'+
+       '<div class="body"><div class="ti">'+esc(t.titulo)+'</div><div class="meta">Vencía: '+fmtFecha(t.fecha)+'</div>'+ad+'</div>'+
+       '<div class="rowbtns">'+btn+'</div></div>';
+  });
+  else h+='<div class="empty">Sin tareas vencidas. 🎉</div>';
+  h+='</div></div>';
+  return h;
+}
+
+/* =====================================================================
+   VISTA: SUPERVISION
+   ===================================================================== */
+function viewSupervision(){
+  if(supUser==null) supUser=SESSION.id;
+  let h='';
+  // resumen de todos
+  h+='<div class="card"><div class="chead"><div class="t"><small>Resumen</small>Cumplimiento por usuario</div></div>'+
+     '<table class="grid"><thead><tr><th>Usuario</th><th>Rol</th><th>% día (vivo)</th><th>% mes</th><th></th></tr></thead><tbody>';
+  STATE.usuarios.slice().sort((a,b)=>a.id-b.id).forEach(u=>{
+    const d=pctDiaVivo(u.id); const m=pctMes(u.id);
+    h+='<tr><td><span class="nm">'+esc(u.nombre)+'</span></td><td>'+rolLabel(u.rol)+'</td>'+
+       '<td><span class="pct" style="color:'+color(d.p)+'">'+d.p+'%</span> <span style="color:var(--muted)">('+d.hechas+'/'+d.total+')</span></td>'+
+       '<td><span class="pct" style="color:'+(m==null?'var(--muted)':color(m))+'">'+(m==null?'—':m+'%')+'</span></td>'+
+       '<td><button class="act ghost sm" data-ver="'+u.id+'">Ver día</button></td></tr>';
+  });
+  h+='</tbody></table></div>';
+
+  // detalle del usuario seleccionado
+  h+='<div class="card"><div class="chead"><div class="t"><small>Detalle</small>Día de '+esc(usuarioNombre(supUser))+'</div>'+
+     '<button class="act sm" data-newtask="'+supUser+'">Crear tarea para este usuario</button></div></div>';
+  h+=viewMiDia(supUser,false);
+  return h;
+}
+
+/* =====================================================================
+   VISTA: SOLICITUDES (solo Direccion)
+   ===================================================================== */
+function viewSolicitudes(){
+  let h='<div class="card"><div class="chead"><div class="t"><small>Alta Dirección</small>Solicitudes de prórroga pendientes</div></div><div class="clist">';
+  if(!STATE.prorrogas.length){ h+='<div class="empty">No hay solicitudes pendientes.</div></div></div>'; return h; }
+  STATE.prorrogas.forEach(p=>{
+    const t=STATE.tareas.find(x=>x.id===p.tarea_id);
+    const titulo=t?esc(t.titulo):'(tarea #'+p.tarea_id+')';
+    const orig=t?fmtFecha(t.fecha):'—';
+    h+='<div class="trow"><div class="body">'+
+       '<div class="ti">'+titulo+'</div>'+
+       '<div class="meta">Usuario: <b>'+esc(usuarioNombre(p.usuario_id))+'</b> · vencía: '+orig+' · propone: <b>'+fmtFecha(p.fecha_propuesta)+'</b></div>'+
+       (p.nota?'<div class="de">Nota: '+esc(p.nota)+'</div>':'')+
+       '</div><div class="rowbtns">'+
+       '<button class="act sm" data-decidir="'+p.id+'" data-ap="1">Aprobar</button>'+
+       '<button class="act danger sm" data-decidir="'+p.id+'" data-ap="0">Rechazar</button>'+
+       '</div></div>';
+  });
+  h+='</div></div>';
+  return h;
+}
+
+/* =====================================================================
+   VISTA: PROYECTOS (cierre mensual)
+   ===================================================================== */
+function viewProyectos(){
+  const esDir = SESSION.rol==='direccion';
+  let h='<div class="card"><div class="chead"><div class="t"><small>Cierre mensual · '+MES[parseInt(PERIODO.slice(5))-1]+' '+PERIODO.slice(0,4)+'</small>Avance de proyectos por proceso</div></div>'+
+    '<table class="grid"><thead><tr><th>Proceso</th><th>% congelado del mes</th>'+(esDir?'<th>% de avance (en vivo)</th><th></th>':'')+'</tr></thead><tbody>';
+  STATE.procesos.forEach(pr=>{
+    const cierre=STATE.proyCierre.find(c=>c.proceso_id===pr.id && c.periodo===PERIODO);
+    const cong = cierre? Math.round(Number(cierre.porcentaje)) : null;
+    h+='<tr><td><span class="nm">'+esc(pr.nombre)+'</span></td>'+
+       '<td><span class="pct" style="color:'+(cong==null?'var(--muted)':color(cong))+'">'+(cong==null?'—':cong+'%')+'</span></td>';
+    if(esDir){
+      h+='<td><input type="number" min="0" max="100" class="proypct" data-proc="'+pr.id+'" placeholder="0-100" value="'+(cong==null?'':cong)+'" style="width:90px;font-family:Arial;padding:7px 9px;border:1px solid var(--line);border-radius:8px"></td>'+
+         '<td><button class="act sm" data-cerrarproy="'+pr.id+'">Congelar</button></td>';
+    }
+    h+='</tr>';
+  });
+  h+='</tbody></table>';
+  if(esDir) h+='<div class="chead" style="border-top:1px solid var(--line);border-bottom:none"><div class="meta" style="font-family:Arial;font-size:12px;color:var(--muted)">Captura el % de avance que observas (el seguimiento en vivo sigue como en v1) y congélalo para el periodo. Se puede recongelar para corregir.</div><button class="act gold" data-cerrartodos="1">Congelar todos</button></div>';
+  h+='</div>';
+  return h;
+}
+
+/* =====================================================================
+   VISTA: USUARIOS (solo Direccion)
+   ===================================================================== */
+function viewUsuarios(){
+  let h='<div class="card"><div class="chead"><div class="t"><small>Administración</small>Usuarios del Gestor</div>'+
+    '<button class="act gold" data-newuser="1">+ Agregar usuario</button></div>'+
+    '<table class="grid"><thead><tr><th>Nombre</th><th>Rol</th><th>Vínculo efp_personas</th></tr></thead><tbody>';
+  STATE.usuarios.slice().sort((a,b)=>a.id-b.id).forEach(u=>{
+    h+='<tr><td><span class="nm">'+esc(u.nombre)+'</span></td><td>'+rolLabel(u.rol)+'</td><td>'+(u.efp_persona_id==null?'—':('#'+u.efp_persona_id))+'</td></tr>';
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+
+/* =====================================================================
+   EVENTOS DE LAS VISTAS
+   ===================================================================== */
+function bindViewEvents(){
+  const v=document.getElementById('view');
+  // marcar hecha
+  v.querySelectorAll('[data-mark]').forEach(el=>el.addEventListener('change',e=>{
+    marcarHecha(+e.target.dataset.mark, e.target.checked);
+  }));
+  // ver dia (supervision)
+  v.querySelectorAll('[data-ver]').forEach(el=>el.addEventListener('click',e=>{ supUser=+e.target.dataset.ver; render(); window.scrollTo(0,document.body.scrollHeight); }));
+  // crear tarea
+  v.querySelectorAll('[data-newtask]').forEach(el=>el.addEventListener('click',e=>modalCrearTarea(+e.target.dataset.newtask)));
+  // reprogramar
+  v.querySelectorAll('[data-reprog]').forEach(el=>el.addEventListener('click',e=>modalReprogramar(+e.target.dataset.reprog)));
+  // solicitar prorroga
+  v.querySelectorAll('[data-prorroga]').forEach(el=>el.addEventListener('click',e=>modalProrroga(+e.target.dataset.prorroga)));
+  // decidir prorroga
+  v.querySelectorAll('[data-decidir]').forEach(el=>el.addEventListener('click',e=>decidirProrroga(+e.target.dataset.decidir, e.target.dataset.ap==='1')));
+  // congelar proyecto
+  v.querySelectorAll('[data-cerrarproy]').forEach(el=>el.addEventListener('click',e=>cerrarProyecto(e.target.dataset.cerrarproy)));
+  const todos=v.querySelector('[data-cerrartodos]'); if(todos) todos.addEventListener('click',cerrarTodosProyectos);
+  // agregar usuario
+  const nu=v.querySelector('[data-newuser]'); if(nu) nu.addEventListener('click',modalCrearUsuario);
+}
+
+/* =====================================================================
+   MODAL GENERICO
+   ===================================================================== */
+function openModal(opts){
+  const box=document.getElementById('modalBox');
+  let h='<h3>'+esc(opts.title)+'</h3>';
+  if(opts.desc) h+='<div class="mp">'+opts.desc+'</div>';
+  opts.fields.forEach(f=>{
+    if(f.type==='checkbox'){
+      h+='<div class="fld chkline"><input type="checkbox" id="f_'+f.key+'" '+(f.value?'checked':'')+'><label for="f_'+f.key+'">'+esc(f.label)+'</label></div>';
+    } else if(f.type==='select'){
+      h+='<div class="fld"><label>'+esc(f.label)+'</label><select id="f_'+f.key+'">'+
+         f.options.map(o=>'<option value="'+esc(o.v)+'"'+(o.v===f.value?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select></div>';
+    } else if(f.type==='textarea'){
+      h+='<div class="fld"><label>'+esc(f.label)+'</label><textarea id="f_'+f.key+'" placeholder="'+esc(f.ph||'')+'">'+esc(f.value||'')+'</textarea></div>';
+    } else {
+      h+='<div class="fld"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
+    }
+  });
+  h+='<div class="mbtns"><button class="act ghost" id="mCancel">Cancelar</button><button class="act" id="mOk">'+esc(opts.ok||'Guardar')+'</button></div>';
+  box.innerHTML=h;
+  document.getElementById('modalWrap').classList.remove('hidden');
+  document.getElementById('mCancel').addEventListener('click',closeModal);
+  document.getElementById('mOk').addEventListener('click',async()=>{
+    const vals={};
+    opts.fields.forEach(f=>{
+      const el=document.getElementById('f_'+f.key);
+      vals[f.key]= f.type==='checkbox'? el.checked : el.value;
+    });
+    const okBtn=document.getElementById('mOk'); okBtn.disabled=true; okBtn.textContent='Guardando…';
+    try{ await opts.onSubmit(vals); closeModal(); }
+    catch(err){ console.error(err); toast(err.message||String(err),'err'); okBtn.disabled=false; okBtn.textContent=opts.ok||'Guardar'; }
+  });
+}
+function closeModal(){ document.getElementById('modalWrap').classList.add('hidden'); document.getElementById('modalBox').innerHTML=''; }
+
+/* =====================================================================
+   ACCIONES (RPCs)
+   ===================================================================== */
+async function refrescar(){ await loadData(); render(); }
+
+async function marcarHecha(tareaId,hecha){
+  try{
+    const {error}=await db.rpc('gpr2_marcar_hecha',{p_pin:SESSION.pin,p_tarea_id:tareaId,p_hecha:hecha});
+    if(error) throw error;
+    await refrescar();
+    toast(hecha?'Tarea marcada ✓':'Tarea desmarcada','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); await refrescar(); }
+}
+
+function modalCrearTarea(uid){
+  const esDir=SESSION.rol==='direccion';
+  const fields=[
+    {key:'titulo',label:'Título',type:'text',ph:'Qué hay que hacer'},
+    {key:'descripcion',label:'Descripción (opcional)',type:'textarea',ph:''},
+    {key:'tipo',label:'Tipo',type:'select',value:'puntual',options:[{v:'puntual',t:'Puntual (una fecha)'},{v:'rutina',t:'Rutina diaria (se repite)'}]},
+    {key:'fecha',label:'Fecha (solo puntual)',type:'date',value:hoyStr()}
+  ];
+  if(esDir) fields.push({key:'alta',label:'⚡ Marcar como Solicitud de Alta Dirección',type:'checkbox',value:false});
+  openModal({
+    title:'Crear tarea',
+    desc:'Para: <b>'+esc(usuarioNombre(uid))+'</b>',
+    fields,
+    onSubmit:async(v)=>{
+      if(!v.titulo.trim()) throw new Error('Escribe un título');
+      if(v.tipo==='rutina'){
+        const r=await db.rpc('gpr2_crear_rutina',{p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim()});
+        if(r.error) throw r.error;
+        const g=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoyStr()}); if(g.error) throw g.error;
+      } else {
+        const r=await db.rpc('gpr2_crear_tarea',{
+          p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim(),
+          p_descripcion:v.descripcion.trim()||null,p_tipo:'puntual',
+          p_fecha:v.fecha||hoyStr(),p_es_alta_direccion:!!v.alta
+        });
+        if(r.error) throw r.error;
+      }
+      await refrescar(); toast('Tarea creada ✓','ok');
+    }
+  });
+}
+
+function modalReprogramar(tareaId){
+  openModal({
+    title:'Reprogramar tarea',
+    desc:'El día viejo ya quedó congelado; esto la mueve a una nueva fecha.',
+    fields:[{key:'fecha',label:'Nueva fecha',type:'date',value:hoyStr()}],
+    ok:'Reprogramar',
+    onSubmit:async(v)=>{
+      if(!v.fecha) throw new Error('Elige una fecha');
+      const r=await db.rpc('gpr2_reprogramar',{p_pin:SESSION.pin,p_tarea_id:tareaId,p_fecha_nueva:v.fecha});
+      if(r.error) throw r.error;
+      await refrescar(); toast('Tarea reprogramada ✓','ok');
+    }
+  });
+}
+
+function modalProrroga(tareaId){
+  openModal({
+    title:'Solicitar prórroga',
+    desc:'Tarea de Alta Dirección. Dirección decide. Mientras tanto, no cuenta en tu %.',
+    fields:[
+      {key:'nota',label:'Motivo',type:'textarea',ph:'Por qué necesitas más tiempo'},
+      {key:'fecha',label:'Fecha que propones',type:'date',value:hoyStr()}
+    ],
+    ok:'Enviar solicitud',
+    onSubmit:async(v)=>{
+      if(!v.fecha) throw new Error('Propón una fecha');
+      const r=await db.rpc('gpr2_solicitar_prorroga',{p_pin:SESSION.pin,p_tarea_id:tareaId,p_nota:v.nota.trim()||null,p_fecha:v.fecha});
+      if(r.error) throw r.error;
+      await refrescar(); toast('Solicitud enviada ✓','ok');
+    }
+  });
+}
+
+async function decidirProrroga(prorrogaId,aprobar){
+  try{
+    const r=await db.rpc('gpr2_decidir_prorroga',{p_pin_direccion:SESSION.pin,p_prorroga_id:prorrogaId,p_aprobar:aprobar});
+    if(r.error) throw r.error;
+    await refrescar(); toast(aprobar?'Prórroga aprobada ✓':'Prórroga rechazada','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+
+async function cerrarProyecto(procId){
+  const inp=document.querySelector('.proypct[data-proc="'+procId+'"]');
+  const val=inp?parseFloat(inp.value):NaN;
+  if(isNaN(val)||val<0||val>100){ toast('Pon un % válido (0-100) para ese proceso','err'); return; }
+  try{
+    const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:procId,p_periodo:PERIODO,p_porcentaje:val});
+    if(r.error) throw r.error;
+    await refrescar(); toast('% congelado ✓','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+async function cerrarTodosProyectos(){
+  const inputs=[...document.querySelectorAll('.proypct')].filter(i=>i.value!=='' && !isNaN(parseFloat(i.value)));
+  if(!inputs.length){ toast('No hay valores que congelar','err'); return; }
+  try{
+    for(const i of inputs){
+      const val=Math.max(0,Math.min(100,parseFloat(i.value)));
+      const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:i.dataset.proc,p_periodo:PERIODO,p_porcentaje:val});
+      if(r.error) throw r.error;
+    }
+    await refrescar(); toast('Periodo congelado ✓','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+
+function modalCrearUsuario(){
+  openModal({
+    title:'Agregar usuario',
+    desc:'Da de alta a cualquier persona. El vínculo a efp_personas es opcional.',
+    fields:[
+      {key:'nombre',label:'Nombre',type:'text',ph:'Nombre completo'},
+      {key:'rol',label:'Rol',type:'select',value:'colaborador',options:[{v:'colaborador',t:'Colaborador'},{v:'admin',t:'Admin'},{v:'direccion',t:'Dirección'}]},
+      {key:'pin',label:'PIN',type:'text',ph:'PIN de acceso'},
+      {key:'efp',label:'efp_persona_id (opcional)',type:'number',ph:'Ej: 7'}
+    ],
+    ok:'Crear usuario',
+    onSubmit:async(v)=>{
+      if(!v.nombre.trim()) throw new Error('Escribe el nombre');
+      if(!v.pin.trim()) throw new Error('Escribe el PIN');
+      const efp = v.efp.trim()===''? null : parseInt(v.efp);
+      const r=await db.rpc('gpr2_crear_usuario',{p_pin_direccion:SESSION.pin,p_nombre:v.nombre.trim(),p_rol:v.rol,p_pin_nuevo:v.pin.trim(),p_efp_persona_id:efp});
+      if(r.error) throw r.error;
+      await refrescar(); toast('Usuario creado ✓','ok');
+    }
+  });
+}
+
+/* =====================================================================
+   PERIODO + LOGIN + INIT
+   ===================================================================== */
+function fillPeriodSelect(){
+  const sel=document.getElementById('periodSel'); sel.innerHTML='';
+  const y=new Date().getFullYear();
+  for(let m=1;m<=12;m++){ const val=y+'-'+String(m).padStart(2,'0'); const o=document.createElement('option'); o.value=val; o.textContent=MES[m-1]+' '+y; sel.appendChild(o); }
+  PERIODO=hoyStr().slice(0,7);
+  if([...sel.options].some(o=>o.value===PERIODO)) sel.value=PERIODO; else { sel.value=sel.options[0].value; PERIODO=sel.value; }
+  sel.addEventListener('change',e=>{ PERIODO=e.target.value; render(); });
+}
+
+async function doLogin(){
+  const msg=document.getElementById('loginMsg');
+  const pin=document.getElementById('pinInput').value.trim();
+  if(!pin){ msg.className='msg err'; msg.textContent='Escribe tu PIN.'; return; }
+  if(!db){ msg.className='msg err'; msg.textContent='Falta configurar el acceso (bloque CONFIG).'; return; }
+  msg.className='msg info'; msg.textContent='Verificando…';
+  try{
+    const {data,error}=await db.rpc('gpr2_check_pin',{p_pin:pin});
+    if(error) throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row){ msg.className='msg err'; msg.textContent='PIN incorrecto.'; return; }
+    SESSION.pin=pin; SESSION.id=row.usuario_id; SESSION.nombre=row.nombre; SESSION.rol=row.rol;
+    document.getElementById('sessUser').textContent=row.nombre;
+    document.getElementById('sessPill').textContent=rolLabel(row.rol);
+    document.getElementById('pName').textContent=row.nombre;
+    document.getElementById('pRole').textContent=rolLabel(row.rol);
+    document.getElementById('hoyLbl').textContent='Hoy: '+fmtFecha(hoyStr());
+    msg.className='msg info'; msg.textContent='Cargando…';
+    await loadData();
+    currentView='miDia'; supUser=SESSION.id;
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('app').style.display='block';
+    render();
+    toast('Bienvenido(a), '+row.nombre,'ok');
+  }catch(err){ console.error(err); msg.className='msg err'; msg.textContent='Error al validar PIN: '+(err.message||err); }
+}
+
+function init(){
+  fillPeriodSelect();
+  const msg=document.getElementById('loginMsg');
+  if(!cfgOK){
+    msg.className='msg err';
+    msg.innerHTML='⚠ Falta pegar la URL y la llave en el bloque <b>CONFIG</b> (arriba en el código). Pídeselo a Rodrigo.';
+    document.getElementById('pinBtn').disabled=true; return;
+  }
+  db=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY);
+  msg.className='msg info'; msg.textContent='Conectado. Ingresa tu PIN.';
+  document.getElementById('pinBtn').addEventListener('click',doLogin);
+  document.getElementById('pinInput').addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  document.getElementById('logoutBtn').addEventListener('click',()=>location.reload());
+  document.getElementById('pinInput').focus();
+}
+init();
+</script>
+</body>
+</html>
