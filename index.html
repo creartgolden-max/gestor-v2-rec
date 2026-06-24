@@ -180,14 +180,15 @@
    Rodrigo pega la URL y la ANON key del proyecto PRINCIPAL.
    ===================================================================== */
 const CONFIG = {
-  SUPABASE_URL:      "PEGAR_AQUI_LA_URL_DE_SUPABASE",   // ej: https://qcwpnovwyhzhqqmhjxco.supabase.co
-  SUPABASE_ANON_KEY: "PEGAR_AQUI_LA_ANON_KEY"           // la llave publica (anon)
+  SUPABASE_URL:      "https://qcwpnovwyhzhqqmhjxco.supabase.co",   // ej: https://qcwpnovwyhzhqqmhjxco.supabase.co
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFjd3Bub3Z3eWh6aHFxbWhqeGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk3MDA3OTUsImV4cCI6MjA5NTI3Njc5NX0.-MSnn07PdxstQ90OLf16823Nvihr47ePXoQSFvgC3mU"           // la llave publica (anon)
 };
 /* ===================================================================== */
 
 let db=null;
 const SESSION={pin:null,id:null,nombre:null,rol:null};
-const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[]};
+const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[],proyectos:[]};
+let expandedProy=new Set();
 let PERIODO=null, currentView=null, supUser=null;
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -230,16 +231,17 @@ async function loadData(){
   const r2=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoy});
   if(r2.error) console.warn('generar_rutinas:',r2.error.message);
 
-  const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas]=await Promise.all([
+  const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos]=await Promise.all([
     db.from('gpr2_usuarios_publico').select('*').eq('activo',true),
     db.from('gpr2_tareas').select('*').eq('activo',true),
     db.from('gpr2_cierre_dia').select('*'),
     db.from('gpr2_prorrogas').select('*').eq('estado','pendiente'),
     db.from('rev_procesos').select('*').eq('activo',true).order('orden'),
     db.from('gpr2_proyectos_cierre').select('*'),
-    db.from('gpr2_rutinas').select('*').eq('activo',true)
+    db.from('gpr2_rutinas').select('*').eq('activo',true),
+    db.from('gpr2_proyectos').select('*')
   ]);
-  for(const r of [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas]) if(r.error) throw r.error;
+  for(const r of [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos]) if(r.error) throw r.error;
   STATE.usuarios=usuarios.data||[];
   STATE.tareas=tareas.data||[];
   STATE.cierres=cierres.data||[];
@@ -247,13 +249,14 @@ async function loadData(){
   STATE.procesos=procesos.data||[];
   STATE.proyCierre=proyCierre.data||[];
   STATE.rutinas=rutinas.data||[];
+  STATE.proyectos=proyectos.data||[];
 }
 
 /* =====================================================================
    NAVEGACION
    ===================================================================== */
 function tabsForRol(rol){
-  if(rol==='colaborador') return [['miDia','Mi día']];
+  if(rol==='colaborador') return [['miDia','Mi día'],['proyectos','Mis proyectos']];
   if(rol==='admin') return [['miDia','Mi día'],['supervision','Supervisión'],['proyectos','Proyectos']];
   return [['miDia','Mi día'],['supervision','Supervisión'],['solicitudes','Solicitudes'],['proyectos','Proyectos'],['usuarios','Usuarios']];
 }
@@ -385,27 +388,85 @@ function viewSolicitudes(){
 }
 
 /* =====================================================================
-   VISTA: PROYECTOS (cierre mensual)
+   VISTA: PROYECTOS  (lista real con hitos + cierre por proceso)
    ===================================================================== */
-function viewProyectos(){
-  const esDir = SESSION.rol==='direccion';
-  let h='<div class="card"><div class="chead"><div class="t"><small>Cierre mensual · '+MES[parseInt(PERIODO.slice(5))-1]+' '+PERIODO.slice(0,4)+'</small>Avance de proyectos por proceso</div></div>'+
-    '<table class="grid"><thead><tr><th>Proceso</th><th>% congelado del mes</th>'+(esDir?'<th>% de avance (en vivo)</th><th></th>':'')+'</tr></thead><tbody>';
-  STATE.procesos.forEach(pr=>{
-    const cierre=STATE.proyCierre.find(c=>c.proceso_id===pr.id && c.periodo===PERIODO);
-    const cong = cierre? Math.round(Number(cierre.porcentaje)) : null;
-    h+='<tr><td><span class="nm">'+esc(pr.nombre)+'</span></td>'+
-       '<td><span class="pct" style="color:'+(cong==null?'var(--muted)':color(cong))+'">'+(cong==null?'—':cong+'%')+'</span></td>';
-    if(esDir){
-      h+='<td><input type="number" min="0" max="100" class="proypct" data-proc="'+pr.id+'" placeholder="0-100" value="'+(cong==null?'':cong)+'" style="width:90px;font-family:Arial;padding:7px 9px;border:1px solid var(--line);border-radius:8px"></td>'+
-         '<td><button class="act sm" data-cerrarproy="'+pr.id+'">Congelar</button></td>';
-    }
-    h+='</tr>';
-  });
-  h+='</tbody></table>';
-  if(esDir) h+='<div class="chead" style="border-top:1px solid var(--line);border-bottom:none"><div class="meta" style="font-family:Arial;font-size:12px;color:var(--muted)">Captura el % de avance que observas (el seguimiento en vivo sigue como en v1) y congélalo para el periodo. Se puede recongelar para corregir.</div><button class="act gold" data-cerrartodos="1">Congelar todos</button></div>';
-  h+='</div>';
+function avanceProyecto(p){
+  const hitos=Array.isArray(p.hitos)?p.hitos:[];
+  const total=hitos.length; const hechos=hitos.filter(h=>h&&h.hecho).length;
+  return {total,hechos,p: total===0?null:Math.round(hechos/total*100)};
+}
+function procNombre(pid){ const pr=STATE.procesos.find(x=>x.id===pid); return pr?pr.nombre:pid; }
+function aggProceso(pid){
+  const arr=STATE.proyectos.filter(p=>p.proceso_id===pid);
+  let t=0,h=0; arr.forEach(p=>{ const a=avanceProyecto(p); t+=a.total; h+=a.hechos; });
+  return {n:arr.length, total:t, hechos:h, p: t===0?null:Math.round(h/t*100)};
+}
+function selectProceso(p){
+  let s='<select data-asignaproc="'+p.id+'" style="font-family:Arial;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px">';
+  s+='<option value="">(sin proceso)</option>';
+  STATE.procesos.forEach(pr=>{ s+='<option value="'+esc(pr.id)+'"'+(p.proceso_id===pr.id?' selected':'')+'>'+esc(pr.nombre)+'</option>'; });
+  return s+'</select>';
+}
+function projectCard(p,puedeEditar,puedeMarcarHito){
+  const a=avanceProyecto(p); const exp=expandedProy.has(p.id);
+  const bc=a.p==null?'var(--line)':color(a.p);
+  let h='<div class="trow" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
+  h+='<div class="ti">'+esc(p.nombre)+'</div>';
+  h+='<div class="meta">Dueño: <b>'+esc(usuarioNombre(p.owner_id))+'</b> · '+esc(p.status||'—')+'</div>';
+  h+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">'+
+     '<div style="flex:1;max-width:240px;height:9px;border-radius:6px;background:#e9e4d8;overflow:hidden"><i style="display:block;height:100%;width:'+(a.p==null?0:a.p)+'%;background:'+bc+'"></i></div>'+
+     '<span class="pct" style="font-size:14px;color:'+bc+'">'+(a.p==null?'s/hitos':a.p+'%')+'</span>'+
+     '<span style="color:var(--muted);font-size:12px;font-family:Arial">'+a.hechos+'/'+a.total+' hitos</span></div>';
+  h+='<div style="margin-top:6px;font-family:Arial;font-size:12px;color:var(--muted)">Proceso: '+
+     (puedeEditar?selectProceso(p):(p.proceso_id?('<b style="color:var(--green)">'+esc(procNombre(p.proceso_id))+'</b>'):'sin proceso'))+'</div>';
+  if(exp){
+    h+='<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;width:100%">';
+    const hitos=Array.isArray(p.hitos)?p.hitos:[];
+    if(!hitos.length) h+='<div class="empty" style="padding:4px 0">Sin hitos.</div>';
+    hitos.forEach(ht=>{
+      h+='<div style="display:flex;align-items:center;gap:9px;padding:4px 0">'+
+         (puedeMarcarHito?'<input type="checkbox" style="width:18px;height:18px;accent-color:var(--green)" data-hito="'+p.id+'|'+esc(ht.id)+'" '+(ht.hecho?'checked':'')+'>':'<span style="width:18px;text-align:center">'+(ht.hecho?'✓':'·')+'</span>')+
+         '<span style="font-family:Arial;font-size:13px'+(ht.hecho?';text-decoration:line-through;color:var(--muted)':'')+'">'+esc(ht.texto||'')+'</span></div>';
+    });
+    h+='</div>';
+  }
+  h+='</div><div class="rowbtns">'+
+     '<button class="act ghost sm" data-togglehitos="'+p.id+'">'+(exp?'Ocultar':'Hitos ('+a.hechos+'/'+a.total+')')+'</button>'+
+     (puedeEditar?'<button class="act ghost sm" data-editproy="'+p.id+'">Editar</button>':'')+
+     '</div></div>';
   return h;
+}
+function viewProyectos(){
+  const rol=SESSION.rol;
+  // ---- colaborador: solo sus proyectos ----
+  if(rol==='colaborador'){
+    const mios=STATE.proyectos.filter(p=>p.owner_id===SESSION.id);
+    let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos</small>'+mios.length+' proyecto(s)</div></div><div class="clist">';
+    if(mios.length) mios.forEach(p=>{ h+=projectCard(p,false,true); });
+    else h+='<div class="empty">No tienes proyectos asignados.</div>';
+    return h+'</div></div>';
+  }
+  // ---- admin / direccion ----
+  const esDir=rol==='direccion';
+  let h='<div class="card"><div class="chead"><div class="t"><small>Cierre mensual · '+MES[parseInt(PERIODO.slice(5))-1]+' '+PERIODO.slice(0,4)+'</small>Avance por proceso (ponderado por hitos)</div>'+
+     (esDir?'<button class="act gold" data-cerrartodos="1">Congelar todos</button>':'')+'</div>'+
+     '<table class="grid"><thead><tr><th>Proceso</th><th>Proyectos</th><th>% en vivo</th><th>% congelado</th>'+(esDir?'<th></th>':'')+'</tr></thead><tbody>';
+  STATE.procesos.forEach(pr=>{
+    const ag=aggProceso(pr.id);
+    const cierre=STATE.proyCierre.find(c=>c.proceso_id===pr.id && c.periodo===PERIODO);
+    const cong=cierre?Math.round(Number(cierre.porcentaje)):null;
+    h+='<tr><td><span class="nm">'+esc(pr.nombre)+'</span></td><td>'+ag.n+'</td>'+
+       '<td><span class="pct" style="font-size:14px;color:'+(ag.p==null?'var(--muted)':color(ag.p))+'">'+(ag.p==null?'—':ag.p+'%')+'</span></td>'+
+       '<td><span class="pct" style="font-size:14px;color:'+(cong==null?'var(--muted)':color(cong))+'">'+(cong==null?'—':cong+'%')+'</span></td>'+
+       (esDir?'<td><button class="act sm" data-cerrarproy="'+pr.id+'"'+(ag.n===0?' disabled':'')+'>Congelar</button></td>':'')+'</tr>';
+  });
+  h+='</tbody></table><div class="foot" style="font-family:Arial;font-size:11px">El % en vivo = hitos hechos ÷ totales de los proyectos del proceso. Congela para fijar el mes; ese número alimentará a Revisiones (Fase 2).</div></div>';
+  // lista de todos los proyectos
+  const sinProc=STATE.proyectos.filter(p=>!p.proceso_id).length;
+  h+='<div class="card"><div class="chead"><div class="t"><small>Todos los proyectos · '+STATE.proyectos.length+'</small>'+(sinProc?(sinProc+' sin proceso asignado'):'todos con proceso')+'</div>'+
+     '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div><div class="clist">';
+  STATE.proyectos.slice().sort((a,b)=>(a.proceso_id?1:0)-(b.proceso_id?1:0)).forEach(p=>{ h+=projectCard(p,true,true); });
+  return h+'</div></div>';
 }
 
 /* =====================================================================
@@ -444,6 +505,12 @@ function bindViewEvents(){
   // congelar proyecto
   v.querySelectorAll('[data-cerrarproy]').forEach(el=>el.addEventListener('click',e=>cerrarProyecto(e.target.dataset.cerrarproy)));
   const todos=v.querySelector('[data-cerrartodos]'); if(todos) todos.addEventListener('click',cerrarTodosProyectos);
+  // proyectos: hitos / asignar proceso / editar / nuevo
+  v.querySelectorAll('[data-togglehitos]').forEach(el=>el.addEventListener('click',e=>{ const id=+e.target.dataset.togglehitos; if(expandedProy.has(id)) expandedProy.delete(id); else expandedProy.add(id); render(); }));
+  v.querySelectorAll('[data-hito]').forEach(el=>el.addEventListener('change',e=>{ const pr=e.target.dataset.hito.split('|'); marcarHito(+pr[0],pr[1],e.target.checked); }));
+  v.querySelectorAll('[data-asignaproc]').forEach(el=>el.addEventListener('change',e=>asignarProceso(+e.target.dataset.asignaproc, e.target.value||null)));
+  v.querySelectorAll('[data-editproy]').forEach(el=>el.addEventListener('click',e=>modalProyecto(+e.target.dataset.editproy)));
+  const np=v.querySelector('[data-newproy]'); if(np) np.addEventListener('click',()=>modalProyecto(null));
   // agregar usuario
   const nu=v.querySelector('[data-newuser]'); if(nu) nu.addEventListener('click',modalCrearUsuario);
 }
@@ -571,27 +638,75 @@ async function decidirProrroga(prorrogaId,aprobar){
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
 }
 
-async function cerrarProyecto(procId){
-  const inp=document.querySelector('.proypct[data-proc="'+procId+'"]');
-  const val=inp?parseFloat(inp.value):NaN;
-  if(isNaN(val)||val<0||val>100){ toast('Pon un % válido (0-100) para ese proceso','err'); return; }
+async function marcarHito(projId,hitoId,hecho){
   try{
-    const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:procId,p_periodo:PERIODO,p_porcentaje:val});
+    const r=await db.rpc('gpr2_marcar_hito',{p_pin:SESSION.pin,p_proyecto_id:projId,p_hito_id:hitoId,p_hecho:hecho});
     if(r.error) throw r.error;
-    await refrescar(); toast('% congelado ✓','ok');
+    await refrescar(); toast(hecho?'Hito hecho ✓':'Hito desmarcado','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); await refrescar(); }
+}
+async function asignarProceso(projId,procId){
+  try{
+    const r=await db.rpc('gpr2_asignar_proceso',{p_pin:SESSION.pin,p_proyecto_id:projId,p_proceso_id:procId});
+    if(r.error) throw r.error;
+    await refrescar(); toast(procId?'Proceso asignado ✓':'Proceso quitado','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); await refrescar(); }
+}
+async function cerrarProyecto(procId){
+  try{
+    const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:procId,p_periodo:PERIODO});
+    if(r.error) throw r.error;
+    await refrescar(); toast('% del proceso congelado ✓','ok');
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
 }
 async function cerrarTodosProyectos(){
-  const inputs=[...document.querySelectorAll('.proypct')].filter(i=>i.value!=='' && !isNaN(parseFloat(i.value)));
-  if(!inputs.length){ toast('No hay valores que congelar','err'); return; }
+  const conProc=[...new Set(STATE.proyectos.filter(p=>p.proceso_id).map(p=>p.proceso_id))];
+  if(!conProc.length){ toast('Ningún proyecto tiene proceso asignado todavía','err'); return; }
   try{
-    for(const i of inputs){
-      const val=Math.max(0,Math.min(100,parseFloat(i.value)));
-      const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:i.dataset.proc,p_periodo:PERIODO,p_porcentaje:val});
+    for(const pid of conProc){
+      const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:pid,p_periodo:PERIODO});
       if(r.error) throw r.error;
     }
     await refrescar(); toast('Periodo congelado ✓','ok');
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+function modalProyecto(projId){
+  const esNew = projId==null;
+  const p = esNew?null:STATE.proyectos.find(x=>x.id===projId);
+  const userOpts = STATE.usuarios.slice().sort((a,b)=>a.id-b.id).map(u=>({v:String(u.id),t:u.nombre}));
+  const procOpts = [{v:'',t:'(sin proceso)'}].concat(STATE.procesos.map(pr=>({v:pr.id,t:pr.nombre})));
+  const fields=[
+    {key:'nombre',label:'Nombre',type:'text',value:p?p.nombre:''},
+    {key:'status',label:'Status',type:'text',value:p?(p.status||''):'En proceso'},
+    {key:'owner',label:'Dueño',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts},
+    {key:'proceso',label:'Proceso (para el termómetro)',type:'select',value:p?(p.proceso_id||''):'',options:procOpts},
+    {key:'inicio',label:'Inicio',type:'date',value:p?(p.inicio||''):''},
+    {key:'termino',label:'Término',type:'date',value:p?(p.termino||''):''},
+    {key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''}
+  ];
+  if(esNew) fields.push({key:'hitos',label:'Hitos (uno por línea)',type:'textarea',ph:'Definir estructura\nRealizar sesiones\nConsolidar'});
+  openModal({
+    title: esNew?'Nuevo proyecto':'Editar proyecto',
+    fields, ok:'Guardar',
+    onSubmit:async(v)=>{
+      if(!v.nombre.trim()) throw new Error('Escribe el nombre');
+      let hitos=null;
+      if(esNew){
+        const lines=(v.hitos||'').split('\n').map(s=>s.trim()).filter(Boolean);
+        hitos=lines.map((t,i)=>({id:'h'+(i+1),hecho:false,quien:'',texto:t}));
+      }
+      const r=await db.rpc('gpr2_upsert_proyecto',{
+        p_pin:SESSION.pin, p_id:projId, p_nombre:v.nombre.trim(),
+        p_fuente:p?p.fuente:null, p_modalidad:p?p.modalidad:null,
+        p_owner_id:v.owner?parseInt(v.owner):null, p_proceso_id:v.proceso||null,
+        p_revisor:p?p.revisor:null, p_status:v.status||null,
+        p_inicio:v.inicio||null, p_termino:v.termino||null,
+        p_nota:v.nota||null, p_obs:p?p.obs:null, p_hitos:hitos
+      });
+      if(r.error) throw r.error;
+      await refrescar(); toast(esNew?'Proyecto creado ✓':'Proyecto actualizado ✓','ok');
+    }
+  });
 }
 
 function modalCrearUsuario(){
