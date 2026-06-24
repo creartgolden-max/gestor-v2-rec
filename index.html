@@ -401,6 +401,13 @@ function aggProceso(pid){
   let t=0,h=0; arr.forEach(p=>{ const a=avanceProyecto(p); t+=a.total; h+=a.hechos; });
   return {n:arr.length, total:t, hechos:h, p: t===0?null:Math.round(h/t*100)};
 }
+function integrantesList(p){
+  const arr=Array.isArray(p.integrantes)?p.integrantes:[];
+  return arr.map(m=>({nombre:String(m.nombre||m.integrante||'').trim(), resp:String(m.responsabilidad||'').trim()})).filter(x=>x.nombre);
+}
+function integrantesTexto(p){
+  return integrantesList(p).map(m=>m.nombre+(m.resp?(' | '+m.resp):'')).join('\n');
+}
 function selectProceso(p){
   let s='<select data-asignaproc="'+p.id+'" style="font-family:Arial;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px">';
   s+='<option value="">(sin proceso)</option>';
@@ -419,6 +426,11 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
      '<span style="color:var(--muted);font-size:12px;font-family:Arial">'+a.hechos+'/'+a.total+' hitos</span></div>';
   h+='<div style="margin-top:6px;font-family:Arial;font-size:12px;color:var(--muted)">Proceso: '+
      (puedeEditar?selectProceso(p):(p.proceso_id?('<b style="color:var(--green)">'+esc(procNombre(p.proceso_id))+'</b>'):'sin proceso'))+'</div>';
+  const equipo=integrantesList(p);
+  if(p.modalidad==='grupo' || equipo.length){
+    h+='<div style="margin-top:6px;font-family:Arial;font-size:12px;color:var(--muted)">Equipo'+(p.modalidad==='grupo'?' (grupo)':'')+': '+
+       (equipo.length? equipo.map(m=>'<b style="color:var(--ink)">'+esc(m.nombre)+'</b>'+(m.resp?(' — '+esc(m.resp)):'')).join(' · ') : '<span style="font-style:italic">sin integrantes</span>')+'</div>';
+  }
   if(exp){
     h+='<div style="margin-top:8px;border-top:1px dashed var(--line);padding-top:8px;width:100%">';
     const hitos=Array.isArray(p.hitos)?p.hitos:[];
@@ -678,11 +690,13 @@ function modalProyecto(projId){
   const fields=[
     {key:'nombre',label:'Nombre',type:'text',value:p?p.nombre:''},
     {key:'status',label:'Status',type:'text',value:p?(p.status||''):'En proceso'},
-    {key:'owner',label:'Dueño',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts},
+    {key:'modalidad',label:'Modalidad',type:'select',value:p?(p.modalidad||'individual'):'individual',options:[{v:'individual',t:'Individual'},{v:'grupo',t:'Grupo (equipo)'}]},
+    {key:'owner',label:'Dueño / líder',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts},
     {key:'proceso',label:'Proceso (para el termómetro)',type:'select',value:p?(p.proceso_id||''):'',options:procOpts},
     {key:'inicio',label:'Inicio',type:'date',value:p?(p.inicio||''):''},
     {key:'termino',label:'Término',type:'date',value:p?(p.termino||''):''},
-    {key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''}
+    {key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''},
+    {key:'integrantes',label:'Equipo (uno por línea: Nombre | responsabilidad)',type:'textarea',value:p?integrantesTexto(p):'',ph:'Jair | Cotización y muestras\nFernando | Pruebas de llenado'}
   ];
   if(esNew) fields.push({key:'hitos',label:'Hitos (uno por línea)',type:'textarea',ph:'Definir estructura\nRealizar sesiones\nConsolidar'});
   openModal({
@@ -695,13 +709,17 @@ function modalProyecto(projId){
         const lines=(v.hitos||'').split('\n').map(s=>s.trim()).filter(Boolean);
         hitos=lines.map((t,i)=>({id:'h'+(i+1),hecho:false,quien:'',texto:t}));
       }
+      const team=(v.integrantes||'').split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{
+        const i=line.indexOf('|');
+        return i>=0 ? {nombre:line.slice(0,i).trim(), responsabilidad:line.slice(i+1).trim()} : {nombre:line, responsabilidad:''};
+      });
       const r=await db.rpc('gpr2_upsert_proyecto',{
         p_pin:SESSION.pin, p_id:projId, p_nombre:v.nombre.trim(),
-        p_fuente:p?p.fuente:null, p_modalidad:p?p.modalidad:null,
+        p_fuente:p?p.fuente:null, p_modalidad:v.modalidad||'individual',
         p_owner_id:v.owner?parseInt(v.owner):null, p_proceso_id:v.proceso||null,
         p_revisor:p?p.revisor:null, p_status:v.status||null,
         p_inicio:v.inicio||null, p_termino:v.termino||null,
-        p_nota:v.nota||null, p_obs:p?p.obs:null, p_hitos:hitos
+        p_nota:v.nota||null, p_obs:p?p.obs:null, p_hitos:hitos, p_integrantes:team
       });
       if(r.error) throw r.error;
       await refrescar(); toast(esNew?'Proyecto creado ✓':'Proyecto actualizado ✓','ok');
