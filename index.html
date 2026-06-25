@@ -212,6 +212,7 @@ let db=null;
 const SESSION={pin:null,id:null,nombre:null,rol:null};
 const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[],proyectos:[],proysol:[]};
 let expandedProy=new Set();
+let proyFiltro='';
 let PERIODO=null, currentView=null, supUser=null;
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
@@ -508,11 +509,21 @@ function selectProceso(p){
   STATE.procesos.forEach(pr=>{ s+='<option value="'+esc(pr.id)+'"'+(p.proceso_id===pr.id?' selected':'')+'>'+esc(pr.nombre)+'</option>'; });
   return s+'</select>';
 }
+function searchBar(){
+  return '<div style="padding:10px 20px;border-bottom:1px solid var(--line)"><input id="proySearch" placeholder="Buscar proyecto (nombre, dueño, status)…" value="'+esc(proyFiltro||'')+'" style="width:100%;font-family:Arial,sans-serif;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:8px"></div>';
+}
+function aplicarFiltroProy(){
+  const q=(proyFiltro||'').toLowerCase().trim();
+  document.querySelectorAll('#view [data-search]').forEach(el=>{
+    el.style.display = (!q || (el.dataset.search||'').includes(q)) ? '' : 'none';
+  });
+}
 function projectCard(p,puedeEditar,puedeMarcarHito){
   const a=avanceProyecto(p); const exp=expandedProy.has(p.id);
   const esGestion=SESSION.rol!=='colaborador';
   const bc=a.p==null?'var(--line)':color(a.p);
-  let h='<div class="trow" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
+  const _s=esc((p.nombre+' '+usuarioNombre(p.owner_id)+' '+(p.status||'')).toLowerCase());
+  let h='<div class="trow" data-search="'+_s+'" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
   h+='<div class="ti">'+esc(p.nombre)+'</div>';
   h+='<div class="meta">Dueño: <b>'+esc(usuarioNombre(p.owner_id))+'</b> · '+esc(p.status||'—')+'</div>';
   h+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">'+
@@ -570,7 +581,7 @@ function viewProyectos(){
   if(rol==='colaborador'){
     const mios=STATE.proyectos.filter(p=>p.owner_id===SESSION.id);
     let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos</small>'+mios.length+' proyecto(s)</div>'+
-      '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div><div class="clist">';
+      '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div>'+searchBar()+'<div class="clist">';
     if(mios.length) mios.forEach(p=>{ h+=projectCard(p,true,true); });
     else h+='<div class="empty">No tienes proyectos aún. Crea uno con "+ Nuevo proyecto".</div>';
     return h+'</div></div>';
@@ -593,7 +604,7 @@ function viewProyectos(){
   // lista de todos los proyectos
   const sinProc=STATE.proyectos.filter(p=>!p.proceso_id).length;
   h+='<div class="card"><div class="chead"><div class="t"><small>Todos los proyectos · '+STATE.proyectos.length+'</small>'+(sinProc?(sinProc+' sin proceso asignado'):'todos con proceso')+'</div>'+
-     '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div><div class="clist">';
+     '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div>'+searchBar()+'<div class="clist">';
   STATE.proyectos.slice().sort((a,b)=>(a.proceso_id?1:0)-(b.proceso_id?1:0)).forEach(p=>{ h+=projectCard(p,true,true); });
   return h+'</div></div>';
 }
@@ -642,6 +653,10 @@ function bindViewEvents(){
   v.querySelectorAll('[data-asignaproc]').forEach(el=>el.addEventListener('change',e=>asignarProceso(+e.target.dataset.asignaproc, e.target.value||null)));
   v.querySelectorAll('[data-editproy]').forEach(el=>el.addEventListener('click',e=>modalProyecto(+e.target.dataset.editproy)));
   const np=v.querySelector('[data-newproy]'); if(np) np.addEventListener('click',()=>modalProyecto(null));
+  // buscador de proyectos (filtra sin recargar)
+  const ps=v.querySelector('#proySearch');
+  if(ps){ ps.addEventListener('input',e=>{ proyFiltro=e.target.value; aplicarFiltroProy(); }); }
+  aplicarFiltroProy();
   // solicitar prorroga/cancelacion (proyecto o hito) + decidir
   v.querySelectorAll('[data-solpc]').forEach(el=>el.addEventListener('click',e=>{ const pr=e.target.dataset.solpc.split('|'); modalSolicitarPC(+pr[0], pr[1]||null, pr[2]); }));
   v.querySelectorAll('[data-decidirpc]').forEach(el=>el.addEventListener('click',e=>decidirPC(+e.target.dataset.decidirpc, e.target.dataset.ap==='1')));
