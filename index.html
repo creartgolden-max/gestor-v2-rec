@@ -188,7 +188,7 @@ const CONFIG = {
 
 let db=null;
 const SESSION={pin:null,id:null,nombre:null,rol:null};
-const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[],proyectos:[]};
+const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[],proyectos:[],proysol:[]};
 let expandedProy=new Set();
 let PERIODO=null, currentView=null, supUser=null;
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -232,7 +232,7 @@ async function loadData(){
   const r2=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoy});
   if(r2.error) console.warn('generar_rutinas:',r2.error.message);
 
-  const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos]=await Promise.all([
+  const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos,proysol]=await Promise.all([
     db.from('gpr2_usuarios_publico').select('*').eq('activo',true),
     db.from('gpr2_tareas').select('*').eq('activo',true),
     db.from('gpr2_cierre_dia').select('*'),
@@ -240,9 +240,11 @@ async function loadData(){
     db.from('rev_procesos').select('*').eq('activo',true).order('orden'),
     db.from('gpr2_proyectos_cierre').select('*'),
     db.from('gpr2_rutinas').select('*').eq('activo',true),
-    db.from('gpr2_proyectos').select('*')
+    db.from('gpr2_proyectos').select('*'),
+    db.from('gpr2_proy_solicitudes').select('*').eq('estado','pendiente')
   ]);
   for(const r of [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos]) if(r.error) throw r.error;
+  STATE.proysol=proysol.data||[];
   STATE.usuarios=usuarios.data||[];
   STATE.tareas=tareas.data||[];
   STATE.cierres=cierres.data||[];
@@ -265,7 +267,7 @@ function renderTabs(){
   const cont=document.getElementById('tabs'); cont.innerHTML='';
   tabsForRol(SESSION.rol).forEach(([id,lbl])=>{
     const b=document.createElement('button'); b.className='tab'+(currentView===id?' on':''); b.textContent=lbl;
-    if(id==='solicitudes'){ const n=STATE.prorrogas.length; if(n) b.textContent=lbl+' ('+n+')'; }
+    if(id==='solicitudes'){ const n=STATE.prorrogas.length+STATE.proysol.length; if(n) b.textContent=lbl+' ('+n+')'; }
     b.addEventListener('click',()=>{ currentView=id; render(); });
     cont.appendChild(b);
   });
@@ -369,9 +371,10 @@ function viewSupervision(){
    VISTA: SOLICITUDES (solo Direccion)
    ===================================================================== */
 function viewSolicitudes(){
-  let h='<div class="card"><div class="chead"><div class="t"><small>Alta Dirección</small>Solicitudes de prórroga pendientes</div></div><div class="clist">';
-  if(!STATE.prorrogas.length){ h+='<div class="empty">No hay solicitudes pendientes.</div></div></div>'; return h; }
-  STATE.prorrogas.forEach(p=>{
+  // --- prorrogas de TAREAS ---
+  let h='<div class="card"><div class="chead"><div class="t"><small>Alta Dirección · Tareas</small>Prórrogas de tareas pendientes</div></div><div class="clist">';
+  if(!STATE.prorrogas.length){ h+='<div class="empty">No hay prórrogas de tareas pendientes.</div>'; }
+  else STATE.prorrogas.forEach(p=>{
     const t=STATE.tareas.find(x=>x.id===p.tarea_id);
     const titulo=t?esc(t.titulo):'(tarea #'+p.tarea_id+')';
     const orig=t?fmtFecha(t.fecha):'—';
@@ -385,17 +388,35 @@ function viewSolicitudes(){
        '</div></div>';
   });
   h+='</div></div>';
-  return h;
+  // --- prorrogas/cancelaciones de PROYECTOS / HITOS ---
+  h+='<div class="card"><div class="chead"><div class="t"><small>Proyectos</small>Prórrogas / cancelaciones pendientes</div></div><div class="clist">';
+  if(!STATE.proysol.length){ h+='<div class="empty">No hay solicitudes de proyectos pendientes.</div>'; }
+  else STATE.proysol.forEach(s=>{
+    const pr=STATE.proyectos.find(x=>x.id===s.proyecto_id);
+    const nom=pr?esc(pr.nombre):('proyecto #'+s.proyecto_id);
+    let dest='proyecto completo';
+    if(s.hito_id){ const ht=pr&&(Array.isArray(pr.hitos)?pr.hitos:[]).find(h=>h.id===s.hito_id); dest='hito: '+esc((ht&&ht.texto)||s.hito_id); }
+    h+='<div class="trow"><div class="body">'+
+       '<div class="ti">'+(s.tipo==='prorroga'?'Prórroga':'Cancelación')+' — '+nom+'</div>'+
+       '<div class="meta">'+dest+' · solicita: <b>'+esc(usuarioNombre(s.solicitada_por))+'</b>'+(s.fecha_propuesta?(' · propone: <b>'+fmtFecha(s.fecha_propuesta)+'</b>'):'')+'</div>'+
+       (s.motivo?'<div class="de">Motivo: '+esc(s.motivo)+'</div>':'')+
+       '</div><div class="rowbtns">'+
+       '<button class="act sm" data-decidirpc="'+s.id+'" data-ap="1">Aprobar</button>'+
+       '<button class="act danger sm" data-decidirpc="'+s.id+'" data-ap="0">Rechazar</button>'+
+       '</div></div>';
+  });
+  return h+'</div></div>';
 }
 
 /* =====================================================================
    VISTA: PROYECTOS  (lista real con hitos + cierre por proceso)
    ===================================================================== */
 function avanceProyecto(p){
-  const hitos=Array.isArray(p.hitos)?p.hitos:[];
-  const total=hitos.length; const hechos=hitos.filter(h=>h&&h.hecho).length;
+  const hitos=(Array.isArray(p.hitos)?p.hitos:[]).filter(h=>h && !h.cancelado);
+  const total=hitos.length; const hechos=hitos.filter(h=>h.hecho).length;
   return {total,hechos,p: total===0?null:Math.round(hechos/total*100)};
 }
+function solPendDe(proyId,hitoId){ return STATE.proysol.filter(s=>s.proyecto_id===proyId && (s.hito_id||null)===(hitoId||null)); }
 function procNombre(pid){ const pr=STATE.procesos.find(x=>x.id===pid); return pr?pr.nombre:pid; }
 function aggProceso(pid){
   const arr=STATE.proyectos.filter(p=>p.proceso_id===pid);
@@ -437,15 +458,36 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
     const hitos=Array.isArray(p.hitos)?p.hitos:[];
     if(!hitos.length) h+='<div class="empty" style="padding:4px 0">Sin hitos.</div>';
     hitos.forEach(ht=>{
-      h+='<div style="display:flex;align-items:center;gap:9px;padding:4px 0">'+
-         (puedeMarcarHito?'<input type="checkbox" style="width:18px;height:18px;accent-color:var(--green)" data-hito="'+p.id+'|'+esc(ht.id)+'" '+(ht.hecho?'checked':'')+'>':'<span style="width:18px;text-align:center">'+(ht.hecho?'✓':'·')+'</span>')+
-         '<span style="font-family:Arial;font-size:13px'+(ht.hecho?';text-decoration:line-through;color:var(--muted)':'')+'">'+esc(ht.texto||'')+'</span></div>';
+      const cancel=!!ht.cancelado;
+      const sps=puedeMarcarHito?solPendDe(p.id,ht.id):[];
+      let badge='';
+      if(cancel) badge+='<span class="tagrut" style="color:var(--bad)">cancelado</span>';
+      else if(ht.prorroga_hasta) badge+='<span class="tagrut">⏳ prórroga: '+fmtFecha(ht.prorroga_hasta)+'</span>';
+      sps.forEach(s=>{ badge+=' <span class="tagad">⏳ '+(s.tipo==='prorroga'?'prórroga':'cancelación')+' solicitada</span>'; });
+      const chk=(puedeMarcarHito && !cancel)
+        ? '<input type="checkbox" style="width:18px;height:18px;accent-color:var(--green)" data-hito="'+p.id+'|'+esc(ht.id)+'" '+(ht.hecho?'checked':'')+'>'
+        : '<span style="width:18px;text-align:center">'+(cancel?'✕':(ht.hecho?'✓':'·'))+'</span>';
+      const acts=(puedeMarcarHito && !cancel && !sps.length)
+        ? '<button class="act ghost sm" style="padding:2px 7px;font-size:10px" data-solpc="'+p.id+'|'+esc(ht.id)+'|prorroga">prórroga</button>'+
+          '<button class="act danger sm" style="padding:2px 7px;font-size:10px" data-solpc="'+p.id+'|'+esc(ht.id)+'|cancelacion">cancelar</button>'
+        : '';
+      h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;flex-wrap:wrap">'+chk+
+         '<span style="flex:1;min-width:120px;font-family:Arial;font-size:13px'+((ht.hecho||cancel)?';text-decoration:line-through;color:var(--muted)':'')+'">'+esc(ht.texto||'')+'</span>'+
+         badge+'<span class="rowbtns">'+acts+'</span></div>';
     });
     h+='</div>';
   }
+  const spProy=puedeMarcarHito?solPendDe(p.id,null):[];
+  const proyBadge=spProy.map(s=>'<span class="tagad">⏳ '+(s.tipo==='prorroga'?'prórroga':'cancelación')+' solicitada</span>').join(' ');
+  if(proyBadge) h+='<div style="margin-top:6px">'+proyBadge+'</div>';
+  const solBtns=(puedeMarcarHito && p.status!=='Cancelado')
+    ? (spProy.some(s=>s.tipo==='prorroga')?'':'<button class="act ghost sm" data-solpc="'+p.id+'||prorroga">Solicitar prórroga</button>')+
+      (spProy.some(s=>s.tipo==='cancelacion')?'':'<button class="act danger sm" data-solpc="'+p.id+'||cancelacion">Solicitar cancelación</button>')
+    : '';
   h+='</div><div class="rowbtns">'+
      '<button class="act ghost sm" data-togglehitos="'+p.id+'">'+(exp?'Ocultar':'Hitos ('+a.hechos+'/'+a.total+')')+'</button>'+
      (puedeEditar?'<button class="act ghost sm" data-editproy="'+p.id+'">Editar</button>':'')+
+     solBtns+
      '</div></div>';
   return h;
 }
@@ -524,6 +566,9 @@ function bindViewEvents(){
   v.querySelectorAll('[data-asignaproc]').forEach(el=>el.addEventListener('change',e=>asignarProceso(+e.target.dataset.asignaproc, e.target.value||null)));
   v.querySelectorAll('[data-editproy]').forEach(el=>el.addEventListener('click',e=>modalProyecto(+e.target.dataset.editproy)));
   const np=v.querySelector('[data-newproy]'); if(np) np.addEventListener('click',()=>modalProyecto(null));
+  // solicitar prorroga/cancelacion (proyecto o hito) + decidir
+  v.querySelectorAll('[data-solpc]').forEach(el=>el.addEventListener('click',e=>{ const pr=e.target.dataset.solpc.split('|'); modalSolicitarPC(+pr[0], pr[1]||null, pr[2]); }));
+  v.querySelectorAll('[data-decidirpc]').forEach(el=>el.addEventListener('click',e=>decidirPC(+e.target.dataset.decidirpc, e.target.dataset.ap==='1')));
   // agregar usuario
   const nu=v.querySelector('[data-newuser]'); if(nu) nu.addEventListener('click',modalCrearUsuario);
 }
@@ -648,6 +693,30 @@ async function decidirProrroga(prorrogaId,aprobar){
     const r=await db.rpc('gpr2_decidir_prorroga',{p_pin_direccion:SESSION.pin,p_prorroga_id:prorrogaId,p_aprobar:aprobar});
     if(r.error) throw r.error;
     await refrescar(); toast(aprobar?'Prórroga aprobada ✓':'Prórroga rechazada','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+
+function modalSolicitarPC(proyId, hitoId, tipo){
+  const esPror = tipo==='prorroga';
+  const fields=[{key:'motivo',label:'Motivo',type:'textarea',ph:esPror?'Por qué necesita más tiempo':'Por qué se cancela'}];
+  if(esPror) fields.push({key:'fecha',label:'Nueva fecha propuesta',type:'date',value:hoyStr()});
+  openModal({
+    title:(esPror?'Solicitar prórroga':'Solicitar cancelación')+(hitoId?' de hito':' de proyecto'),
+    desc:'La autoriza Dirección.',
+    fields, ok:'Enviar solicitud',
+    onSubmit:async(v)=>{
+      if(esPror && !v.fecha) throw new Error('Propón una fecha');
+      const r=await db.rpc('gpr2_solicitar_pc',{p_pin:SESSION.pin,p_proyecto_id:proyId,p_hito_id:hitoId,p_tipo:tipo,p_motivo:(v.motivo||'').trim()||null,p_fecha:esPror?v.fecha:null});
+      if(r.error) throw r.error;
+      await refrescar(); toast('Solicitud enviada ✓','ok');
+    }
+  });
+}
+async function decidirPC(solId, aprobar){
+  try{
+    const r=await db.rpc('gpr2_decidir_pc',{p_pin_direccion:SESSION.pin,p_solicitud_id:solId,p_aprobar:aprobar});
+    if(r.error) throw r.error;
+    await refrescar(); toast(aprobar?'Solicitud aprobada ✓':'Solicitud rechazada','ok');
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
 }
 
