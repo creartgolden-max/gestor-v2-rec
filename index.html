@@ -510,6 +510,7 @@ function selectProceso(p){
 }
 function projectCard(p,puedeEditar,puedeMarcarHito){
   const a=avanceProyecto(p); const exp=expandedProy.has(p.id);
+  const esGestion=SESSION.rol!=='colaborador';
   const bc=a.p==null?'var(--line)':color(a.p);
   let h='<div class="trow" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
   h+='<div class="ti">'+esc(p.nombre)+'</div>';
@@ -519,7 +520,7 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
      '<span class="pct" style="font-size:14px;color:'+bc+'">'+(a.p==null?'s/hitos':a.p+'%')+'</span>'+
      '<span style="color:var(--muted);font-size:12px;font-family:Arial">'+a.hechos+'/'+a.total+' hitos</span></div>';
   h+='<div style="margin-top:6px;font-family:Arial;font-size:12px;color:var(--muted)">Proceso: '+
-     (puedeEditar?selectProceso(p):(p.proceso_id?('<b style="color:var(--green)">'+esc(procNombre(p.proceso_id))+'</b>'):'sin proceso'))+'</div>';
+     (esGestion?selectProceso(p):(p.proceso_id?('<b style="color:var(--green)">'+esc(procNombre(p.proceso_id))+'</b>'):'sin proceso'))+'</div>';
   const equipo=integrantesList(p);
   if(p.modalidad==='grupo' || equipo.length){
     h+='<div style="margin-top:6px;font-family:Arial;font-size:12px;color:var(--muted)">Equipo'+(p.modalidad==='grupo'?' (grupo)':'')+': '+
@@ -568,9 +569,10 @@ function viewProyectos(){
   // ---- colaborador: solo sus proyectos ----
   if(rol==='colaborador'){
     const mios=STATE.proyectos.filter(p=>p.owner_id===SESSION.id);
-    let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos</small>'+mios.length+' proyecto(s)</div></div><div class="clist">';
-    if(mios.length) mios.forEach(p=>{ h+=projectCard(p,false,true); });
-    else h+='<div class="empty">No tienes proyectos asignados.</div>';
+    let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos</small>'+mios.length+' proyecto(s)</div>'+
+      '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div><div class="clist">';
+    if(mios.length) mios.forEach(p=>{ h+=projectCard(p,true,true); });
+    else h+='<div class="empty">No tienes proyectos aún. Crea uno con "+ Nuevo proyecto".</div>';
     return h+'</div></div>';
   }
   // ---- admin / direccion ----
@@ -656,7 +658,12 @@ function teamRowHTML(nombre,resp){
     '<input class="teamresp" placeholder="responsabilidad" value="'+esc(resp||'')+'" style="flex:1">'+
     '<button type="button" class="teamdel act danger sm" title="Quitar">×</button></div>';
 }
-function hitoRowHTML(texto,hitoJson){
+function hitoRowHTML(texto,hitoJson,locked){
+  if(locked){
+    return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
+      '<span style="flex:1;font-family:Arial;font-size:13px;color:var(--muted)">'+esc(texto||'')+'</span>'+
+      '<span style="font-size:10px;color:var(--muted);font-family:Arial;white-space:nowrap">existente</span></div>';
+  }
   return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
     '<input class="hitotext" placeholder="hito / entregable" value="'+esc(texto||'')+'" style="flex:1">'+
     '<button type="button" class="hitodel act danger sm" title="Quitar">×</button></div>';
@@ -685,6 +692,8 @@ function openModal(opts){
            '<input id="f_'+f.key+'_in" placeholder="Escribe un hito y Agregar" style="flex:1">'+
            '<button type="button" class="act sm" id="f_'+f.key+'_add">+ Agregar</button></div>'+
          '<div id="f_'+f.key+'_list"></div></div>';
+    } else if(f.type==='info'){
+      h+='<div class="fld"><label>'+esc(f.label)+'</label><div style="font-family:Arial;font-size:14px;color:var(--ink);padding:4px 0;font-weight:bold">'+esc(f.value||'—')+'</div></div>';
     } else {
       h+='<div class="fld"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
     }
@@ -706,7 +715,7 @@ function openModal(opts){
   // widgets de hitos (agregar uno por uno)
   opts.fields.filter(f=>f.type==='hitos').forEach(f=>{
     const list=document.getElementById('f_'+f.key+'_list');
-    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht))); });
+    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht), f.addOnly)); });
     const addH=()=>{ const inp=document.getElementById('f_'+f.key+'_in'); const t=(inp.value||'').trim(); if(!t) return; list.insertAdjacentHTML('beforeend', hitoRowHTML(t,'')); inp.value=''; inp.focus(); };
     document.getElementById('f_'+f.key+'_add').addEventListener('click',addH);
     document.getElementById('f_'+f.key+'_in').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addH(); } });
@@ -724,12 +733,14 @@ function openModal(opts){
       if(f.type==='hitos'){
         const list=document.getElementById('f_'+f.key+'_list');
         vals[f.key]=[...list.querySelectorAll('.hitorow')].map((r,i)=>{
-          const txt=(r.querySelector('.hitotext').value||'').trim();
+          const inp=r.querySelector('.hitotext');
           let base={}; if(r.dataset.h){ try{ base=JSON.parse(r.dataset.h); }catch(_){} }
-          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:''}, base, {texto:txt});
+          const texto = inp ? (inp.value||'').trim() : (base.texto||'');
+          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:''}, base, {texto});
         }).filter(x=>x.texto);
         return;
       }
+      if(f.type==='info') return;
       const el=document.getElementById('f_'+f.key);
       vals[f.key]= f.type==='checkbox'? el.checked : el.value;
     });
@@ -903,33 +914,59 @@ async function descongelarTodos(){
 function modalProyecto(projId){
   const esNew = projId==null;
   const p = esNew?null:STATE.proyectos.find(x=>x.id===projId);
+  const esDir = SESSION.rol==='direccion';
+  const esGestion = SESSION.rol!=='colaborador';          // admin o direccion
+  const restringido = !esNew && !esDir;                   // admin/colaborador editando = solo agregar
   const userOpts = STATE.usuarios.slice().sort((a,b)=>a.id-b.id).map(u=>({v:String(u.id),t:u.nombre}));
   const procOpts = [{v:'',t:'(sin proceso)'}].concat(STATE.procesos.map(pr=>({v:pr.id,t:pr.nombre})));
-  const fields=[
-    {key:'nombre',label:'Nombre',type:'text',value:p?p.nombre:''},
-    {key:'status',label:'Status',type:'text',value:p?(p.status||''):'En proceso'},
-    {key:'modalidad',label:'Modalidad',type:'select',value:p?(p.modalidad||'individual'):'individual',options:[{v:'individual',t:'Individual'},{v:'grupo',t:'Grupo (equipo)'}]},
-    {key:'owner',label:'Dueño / líder',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts},
-    {key:'proceso',label:'Proceso (para el termómetro)',type:'select',value:p?(p.proceso_id||''):'',options:procOpts},
-    {key:'inicio',label:'Inicio',type:'date',value:p?(p.inicio||''):''},
-    {key:'termino',label:'Término',type:'date',value:p?(p.termino||''):''},
-    {key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''},
-    {key:'integrantes',label:'Equipo (elige del selector y agrega su responsabilidad)',type:'team',
+  let fields, titulo;
+  if(restringido){
+    // EDITAR (admin/colaborador) = SOLO AGREGAR nota + hitos nuevos
+    titulo='Editar · solo agregar (notas e hitos)';
+    fields=[
+      {type:'info',label:'Proyecto',value:p.nombre},
+      {type:'info',label:'Dueño · Status',value: usuarioNombre(p.owner_id)+' · '+(p.status||'—')},
+      {type:'info',label:'Proceso',value: p.proceso_id?procNombre(p.proceso_id):'sin proceso'},
+      {key:'nota',label:'Nota',type:'textarea',value:p.nota||''},
+      {key:'hitos',label:'Hitos (agrega nuevos; los existentes no se editan)',type:'hitos',value:Array.isArray(p.hitos)?p.hitos:[],addOnly:true}
+    ];
+  } else {
+    // CREAR (todos) o EDITAR Direccion = completo
+    titulo= esNew?'Nuevo proyecto':'Editar proyecto';
+    fields=[
+      {key:'nombre',label:'Nombre',type:'text',value:p?p.nombre:''},
+      {key:'status',label:'Status',type:'text',value:p?(p.status||''):'En proceso'},
+      {key:'modalidad',label:'Modalidad',type:'select',value:p?(p.modalidad||'individual'):'individual',options:[{v:'individual',t:'Individual'},{v:'grupo',t:'Grupo (equipo)'}]}
+    ];
+    if(esGestion) fields.push({key:'owner',label:'Dueño / líder',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts});
+    fields.push({key:'proceso',label:'Proceso (para el termómetro)',type:'select',value:p?(p.proceso_id||''):'',options:procOpts});
+    fields.push({key:'inicio',label:'Inicio',type:'date',value:p?(p.inicio||''):''});
+    fields.push({key:'termino',label:'Término',type:'date',value:p?(p.termino||''):''});
+    fields.push({key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''});
+    fields.push({key:'integrantes',label:'Equipo (elige del selector y agrega su responsabilidad)',type:'team',
       users:[...new Set(STATE.usuarios.map(u=>u.nombre).concat(integrantesList(p||{}).map(m=>m.nombre)))].sort(),
-      value:p?integrantesList(p):[]}
-  ];
-  fields.push({key:'hitos',label:'Hitos (agrega uno por uno)',type:'hitos',value:p?(Array.isArray(p.hitos)?p.hitos:[]):[]});
+      value:p?integrantesList(p):[]});
+    fields.push({key:'hitos',label:'Hitos (agrega uno por uno)',type:'hitos',value:p?(Array.isArray(p.hitos)?p.hitos:[]):[]});
+  }
   openModal({
-    title: esNew?'Nuevo proyecto':'Editar proyecto',
-    fields, ok:'Guardar',
+    title: titulo, fields, ok:'Guardar',
     onSubmit:async(v)=>{
-      if(!v.nombre.trim()) throw new Error('Escribe el nombre');
       const hitos = Array.isArray(v.hitos)? v.hitos : null;
+      if(restringido){
+        const r=await db.rpc('gpr2_upsert_proyecto',{
+          p_pin:SESSION.pin, p_id:projId, p_nombre:p.nombre, p_fuente:p.fuente, p_modalidad:p.modalidad,
+          p_owner_id:p.owner_id, p_proceso_id:p.proceso_id, p_revisor:p.revisor, p_status:p.status,
+          p_inicio:p.inicio, p_termino:p.termino, p_nota:v.nota||null, p_obs:p.obs, p_hitos:hitos, p_integrantes:null
+        });
+        if(r.error) throw r.error;
+        await refrescar(); toast('Guardado ✓ (nota e hitos)','ok'); return;
+      }
+      if(!v.nombre.trim()) throw new Error('Escribe el nombre');
       const team=(v.integrantes||[]).filter(m=>m && m.nombre);
       const r=await db.rpc('gpr2_upsert_proyecto',{
         p_pin:SESSION.pin, p_id:projId, p_nombre:v.nombre.trim(),
         p_fuente:p?p.fuente:null, p_modalidad:v.modalidad||'individual',
-        p_owner_id:v.owner?parseInt(v.owner):null, p_proceso_id:v.proceso||null,
+        p_owner_id:v.owner?parseInt(v.owner):(p?p.owner_id:null), p_proceso_id:v.proceso||null,
         p_revisor:p?p.revisor:null, p_status:v.status||null,
         p_inicio:v.inicio||null, p_termino:v.termino||null,
         p_nota:v.nota||null, p_obs:p?p.obs:null, p_hitos:hitos, p_integrantes:team
