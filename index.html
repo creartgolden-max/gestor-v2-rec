@@ -649,6 +649,12 @@ function bindViewEvents(){
 /* =====================================================================
    MODAL GENERICO
    ===================================================================== */
+function teamRowHTML(nombre,resp){
+  return '<div class="teamrow" data-nombre="'+esc(nombre)+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
+    '<span style="flex:0 0 110px;font-family:Arial;font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(nombre)+'</span>'+
+    '<input class="teamresp" placeholder="responsabilidad" value="'+esc(resp||'')+'" style="flex:1">'+
+    '<button type="button" class="teamdel act danger sm" title="Quitar">×</button></div>';
+}
 function openModal(opts){
   const box=document.getElementById('modalBox');
   let h='<h3>'+esc(opts.title)+'</h3>';
@@ -661,6 +667,12 @@ function openModal(opts){
          f.options.map(o=>'<option value="'+esc(o.v)+'"'+(o.v===f.value?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select></div>';
     } else if(f.type==='textarea'){
       h+='<div class="fld"><label>'+esc(f.label)+'</label><textarea id="f_'+f.key+'" placeholder="'+esc(f.ph||'')+'">'+esc(f.value||'')+'</textarea></div>';
+    } else if(f.type==='team'){
+      h+='<div class="fld"><label>'+esc(f.label)+'</label>'+
+         '<div style="display:flex;gap:6px;margin-bottom:8px">'+
+           '<select id="f_'+f.key+'_sel" style="flex:1">'+(f.users||[]).map(n=>'<option>'+esc(n)+'</option>').join('')+'</select>'+
+           '<button type="button" class="act sm" id="f_'+f.key+'_add">+ Agregar</button></div>'+
+         '<div id="f_'+f.key+'_list"></div></div>';
     } else {
       h+='<div class="fld"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
     }
@@ -668,10 +680,26 @@ function openModal(opts){
   h+='<div class="mbtns"><button class="act ghost" id="mCancel">Cancelar</button><button class="act" id="mOk">'+esc(opts.ok||'Guardar')+'</button></div>';
   box.innerHTML=h;
   document.getElementById('modalWrap').classList.remove('hidden');
+  // widgets de equipo (selector + agregar/quitar)
+  opts.fields.filter(f=>f.type==='team').forEach(f=>{
+    const list=document.getElementById('f_'+f.key+'_list');
+    (f.value||[]).forEach(m=>{ list.insertAdjacentHTML('beforeend', teamRowHTML(m.nombre, m.resp!=null?m.resp:m.responsabilidad)); });
+    document.getElementById('f_'+f.key+'_add').addEventListener('click',()=>{
+      const nom=document.getElementById('f_'+f.key+'_sel').value;
+      if(!nom || [...list.querySelectorAll('.teamrow')].some(r=>r.dataset.nombre===nom)) return;
+      list.insertAdjacentHTML('beforeend', teamRowHTML(nom,''));
+    });
+    list.addEventListener('click',e=>{ if(e.target.classList.contains('teamdel')) e.target.closest('.teamrow').remove(); });
+  });
   document.getElementById('mCancel').addEventListener('click',closeModal);
   document.getElementById('mOk').addEventListener('click',async()=>{
     const vals={};
     opts.fields.forEach(f=>{
+      if(f.type==='team'){
+        const list=document.getElementById('f_'+f.key+'_list');
+        vals[f.key]=[...list.querySelectorAll('.teamrow')].map(r=>({nombre:r.dataset.nombre, responsabilidad:(r.querySelector('.teamresp').value||'').trim()}));
+        return;
+      }
       const el=document.getElementById('f_'+f.key);
       vals[f.key]= f.type==='checkbox'? el.checked : el.value;
     });
@@ -856,7 +884,9 @@ function modalProyecto(projId){
     {key:'inicio',label:'Inicio',type:'date',value:p?(p.inicio||''):''},
     {key:'termino',label:'Término',type:'date',value:p?(p.termino||''):''},
     {key:'nota',label:'Nota',type:'textarea',value:p?(p.nota||''):''},
-    {key:'integrantes',label:'Equipo (uno por línea: Nombre | responsabilidad)',type:'textarea',value:p?integrantesTexto(p):'',ph:'Jair | Cotización y muestras\nFernando | Pruebas de llenado'}
+    {key:'integrantes',label:'Equipo (elige del selector y agrega su responsabilidad)',type:'team',
+      users:[...new Set(STATE.usuarios.map(u=>u.nombre).concat(integrantesList(p||{}).map(m=>m.nombre)))].sort(),
+      value:p?integrantesList(p):[]}
   ];
   if(esNew) fields.push({key:'hitos',label:'Hitos (uno por línea)',type:'textarea',ph:'Definir estructura\nRealizar sesiones\nConsolidar'});
   openModal({
@@ -869,10 +899,7 @@ function modalProyecto(projId){
         const lines=(v.hitos||'').split('\n').map(s=>s.trim()).filter(Boolean);
         hitos=lines.map((t,i)=>({id:'h'+(i+1),hecho:false,quien:'',texto:t}));
       }
-      const team=(v.integrantes||'').split('\n').map(s=>s.trim()).filter(Boolean).map(line=>{
-        const i=line.indexOf('|');
-        return i>=0 ? {nombre:line.slice(0,i).trim(), responsabilidad:line.slice(i+1).trim()} : {nombre:line, responsabilidad:''};
-      });
+      const team=(v.integrantes||[]).filter(m=>m && m.nombre);
       const r=await db.rpc('gpr2_upsert_proyecto',{
         p_pin:SESSION.pin, p_id:projId, p_nombre:v.nombre.trim(),
         p_fuente:p?p.fuente:null, p_modalidad:v.modalidad||'individual',
