@@ -260,8 +260,8 @@ async function loadData(){
    ===================================================================== */
 function tabsForRol(rol){
   if(rol==='colaborador') return [['miDia','Mi día'],['proyectos','Mis proyectos']];
-  if(rol==='admin') return [['miDia','Mi día'],['supervision','Supervisión'],['proyectos','Proyectos']];
-  return [['miDia','Mi día'],['supervision','Supervisión'],['solicitudes','Solicitudes'],['proyectos','Proyectos'],['usuarios','Usuarios']];
+  if(rol==='admin') return [['dashboard','Dashboard'],['miDia','Mi día'],['supervision','Supervisión'],['proyectos','Proyectos']];
+  return [['dashboard','Dashboard'],['miDia','Mi día'],['supervision','Supervisión'],['solicitudes','Solicitudes'],['proyectos','Proyectos'],['usuarios','Usuarios']];
 }
 function renderTabs(){
   const cont=document.getElementById('tabs'); cont.innerHTML='';
@@ -275,12 +275,58 @@ function renderTabs(){
 function render(){
   renderTabs();
   const v=document.getElementById('view');
-  if(currentView==='miDia') v.innerHTML=viewMiDia(SESSION.id,true);
+  if(currentView==='dashboard') v.innerHTML=viewDashboard();
+  else if(currentView==='miDia') v.innerHTML=viewMiDia(SESSION.id,true);
   else if(currentView==='supervision') v.innerHTML=viewSupervision();
   else if(currentView==='solicitudes') v.innerHTML=viewSolicitudes();
   else if(currentView==='proyectos') v.innerHTML=viewProyectos();
   else if(currentView==='usuarios') v.innerHTML=viewUsuarios();
   bindViewEvents();
+}
+
+/* =====================================================================
+   VISTA: DASHBOARD (panel ejecutivo, se calcula de gpr2_proyectos)
+   ===================================================================== */
+function statCard(k,v,s,col){
+  return '<div class="stat"><div class="k">'+esc(k)+'</div><div class="v" style="color:'+(col||'var(--green)')+'">'+v+'</div>'+(s?'<div class="s">'+esc(s)+'</div>':'')+'</div>';
+}
+function viewDashboard(){
+  const ps=STATE.proyectos;
+  const done=['Terminado','Completado','Cerrado','Finalizado'];
+  const hoy=hoyStr();
+  let concluidos=0, cancelados=0, enProceso=0, sinComenzar=0, enRiesgo=0;
+  ps.forEach(p=>{
+    const a=avanceProyecto(p); const st=(p.status||'').trim();
+    if(st==='Cancelado'){ cancelados++; return; }
+    if(done.includes(st) || a.p===100){ concluidos++; return; }
+    if(a.p==null || a.p===0) sinComenzar++; else enProceso++;
+    const vencido = p.termino && p.termino<hoy;
+    const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
+    if(vencido||atorado) enRiesgo++;
+  });
+  const avs=ps.map(p=>avanceProyecto(p).p).filter(v=>v!=null);
+  const avance=avs.length?Math.round(avs.reduce((a,b)=>a+b,0)/avs.length):0;
+  let h='<div class="stats">'+
+    statCard('Proyectos', ps.length, '', 'var(--green)')+
+    statCard('En proceso', enProceso, '', 'var(--accent)')+
+    statCard('Concluidos', concluidos, '', 'var(--ok)')+
+    statCard('Sin comenzar', sinComenzar, '', 'var(--muted)')+
+    statCard('Avance global', avance+'%', '', color(avance))+
+    statCard('En riesgo', enRiesgo, '', enRiesgo?'var(--bad)':'var(--ok)')+
+    (cancelados?statCard('Cancelados', cancelados, '', 'var(--muted)'):'')+
+    '</div>';
+  // por estado
+  const estados={}; ps.forEach(p=>{ const s=((p.status||'').trim())||'(sin status)'; estados[s]=(estados[s]||0)+1; });
+  const ents=Object.entries(estados).sort((a,b)=>b[1]-a[1]); const maxc=Math.max.apply(null, ents.map(e=>e[1]).concat([1]));
+  h+='<div class="card"><div class="chead"><div class="t"><small>Distribución</small>Por estado · '+ps.length+' proyectos</div></div><div style="padding:14px 20px">';
+  ents.forEach(([s,c])=>{
+    h+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;font-family:Arial;font-size:13px">'+
+       '<span style="width:150px;color:var(--ink)">'+esc(s)+'</span>'+
+       '<div style="flex:1;max-width:340px;height:10px;border-radius:6px;background:#e9eef6;overflow:hidden"><i style="display:block;height:100%;width:'+Math.round(c/maxc*100)+'%;background:var(--accent)"></i></div>'+
+       '<b style="color:var(--green)">'+c+'</b></div>';
+  });
+  h+='</div></div><p class="note">Vista informativa · se calcula de los proyectos del Gestor (status + hitos). Los hitos cancelados no cuentan en el avance.</p>';
+  return h;
 }
 
 /* =====================================================================
@@ -504,7 +550,7 @@ function viewProyectos(){
   // ---- admin / direccion ----
   const esDir=rol==='direccion';
   let h='<div class="card"><div class="chead"><div class="t"><small>Cierre mensual · '+MES[parseInt(PERIODO.slice(5))-1]+' '+PERIODO.slice(0,4)+'</small>Avance por proceso (ponderado por hitos)</div>'+
-     (esDir?'<button class="act gold" data-cerrartodos="1">Congelar todos</button>':'')+'</div>'+
+     (esDir?'<div class="rowbtns"><button class="act ghost sm" data-descongelartodos="1">Descongelar todo</button><button class="act gold" data-cerrartodos="1">Congelar todos</button></div>':'')+'</div>'+
      '<table class="grid"><thead><tr><th>Proceso</th><th>Proyectos</th><th>% en vivo</th><th>% congelado</th>'+(esDir?'<th></th>':'')+'</tr></thead><tbody>';
   STATE.procesos.forEach(pr=>{
     const ag=aggProceso(pr.id);
@@ -513,7 +559,7 @@ function viewProyectos(){
     h+='<tr><td><span class="nm">'+esc(pr.nombre)+'</span></td><td>'+ag.n+'</td>'+
        '<td><span class="pct" style="font-size:14px;color:'+(ag.p==null?'var(--muted)':color(ag.p))+'">'+(ag.p==null?'—':ag.p+'%')+'</span></td>'+
        '<td><span class="pct" style="font-size:14px;color:'+(cong==null?'var(--muted)':color(cong))+'">'+(cong==null?'—':cong+'%')+'</span></td>'+
-       (esDir?'<td><button class="act sm" data-cerrarproy="'+pr.id+'"'+(ag.n===0?' disabled':'')+'>Congelar</button></td>':'')+'</tr>';
+       (esDir?'<td><div class="rowbtns"><button class="act sm" data-cerrarproy="'+pr.id+'"'+(ag.n===0?' disabled':'')+'>Congelar</button>'+(cong!=null?'<button class="act ghost sm" data-descongelar="'+pr.id+'">Descongelar</button>':'')+'</div></td>':'')+'</tr>';
   });
   h+='</tbody></table><div class="foot" style="font-family:Arial;font-size:11px">El % en vivo = hitos hechos ÷ totales de los proyectos del proceso. Congela para fijar el mes; ese número alimentará a Revisiones (Fase 2).</div></div>';
   // lista de todos los proyectos
@@ -560,6 +606,8 @@ function bindViewEvents(){
   // congelar proyecto
   v.querySelectorAll('[data-cerrarproy]').forEach(el=>el.addEventListener('click',e=>cerrarProyecto(e.target.dataset.cerrarproy)));
   const todos=v.querySelector('[data-cerrartodos]'); if(todos) todos.addEventListener('click',cerrarTodosProyectos);
+  v.querySelectorAll('[data-descongelar]').forEach(el=>el.addEventListener('click',e=>descongelarProyecto(e.target.dataset.descongelar)));
+  const destodos=v.querySelector('[data-descongelartodos]'); if(destodos) destodos.addEventListener('click',descongelarTodos);
   // proyectos: hitos / asignar proceso / editar / nuevo
   v.querySelectorAll('[data-togglehitos]').forEach(el=>el.addEventListener('click',e=>{ const id=+e.target.dataset.togglehitos; if(expandedProy.has(id)) expandedProy.delete(id); else expandedProy.add(id); render(); }));
   v.querySelectorAll('[data-hito]').forEach(el=>el.addEventListener('change',e=>{ const pr=e.target.dataset.hito.split('|'); marcarHito(+pr[0],pr[1],e.target.checked); }));
@@ -744,12 +792,29 @@ async function cerrarProyecto(procId){
 async function cerrarTodosProyectos(){
   const conProc=[...new Set(STATE.proyectos.filter(p=>p.proceso_id).map(p=>p.proceso_id))];
   if(!conProc.length){ toast('Ningún proyecto tiene proceso asignado todavía','err'); return; }
+  if(!confirm('¿Congelar el % de '+conProc.length+' proceso(s) para '+PERIODO+'? (puedes descongelar después)')) return;
   try{
     for(const pid of conProc){
       const r=await db.rpc('gpr2_cerrar_mes_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:pid,p_periodo:PERIODO});
       if(r.error) throw r.error;
     }
     await refrescar(); toast('Periodo congelado ✓','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+async function descongelarProyecto(procId){
+  if(!confirm('¿Descongelar el % de este proceso para '+PERIODO+'? (borra la foto congelada)')) return;
+  try{
+    const r=await db.rpc('gpr2_descongelar_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:procId,p_periodo:PERIODO});
+    if(r.error) throw r.error;
+    await refrescar(); toast('Descongelado ✓','ok');
+  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+async function descongelarTodos(){
+  if(!confirm('¿Descongelar TODO el periodo '+PERIODO+'? (borra todas las fotos congeladas del mes)')) return;
+  try{
+    const r=await db.rpc('gpr2_descongelar_proyectos',{p_pin_direccion:SESSION.pin,p_proceso_id:null,p_periodo:PERIODO});
+    if(r.error) throw r.error;
+    await refrescar(); toast('Periodo descongelado ✓','ok');
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
 }
 function modalProyecto(projId){
@@ -850,7 +915,7 @@ async function doLogin(){
     document.getElementById('hoyLbl').textContent='Hoy: '+fmtFecha(hoyStr());
     msg.className='msg info'; msg.textContent='Cargando…';
     await loadData();
-    currentView='miDia'; supUser=SESSION.id;
+    currentView=(row.rol==='colaborador')?'miDia':'dashboard'; supUser=SESSION.id;
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('app').style.display='block';
     render();
