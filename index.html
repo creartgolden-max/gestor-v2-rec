@@ -67,7 +67,8 @@
   .userchip .uav{width:32px;height:32px;border-radius:9px;flex:none;background:var(--accent);display:grid;place-items:center;font-weight:bold;font-size:12px;color:#fff}
   .userchip .uname{font-family:Georgia,serif;font-size:13px;color:#fff;line-height:1.1}
   .userchip .urole{font-size:10px;color:#A9BBE6}
-  .userchip .logout{background:transparent;border:none;color:#fff;cursor:pointer;font-size:17px;padding:2px 4px;line-height:1}
+  .userchip .logout{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff;cursor:pointer;font-size:12px;font-family:Arial,sans-serif;padding:6px 11px;border-radius:8px;margin-left:2px;white-space:nowrap}
+  .userchip .logout:hover{background:rgba(255,255,255,.24)}
 
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
@@ -183,7 +184,7 @@
           <div class="uname" id="pName">—</div>
           <div class="urole" id="pRole">—</div>
         </div>
-        <button class="logout" id="logoutBtn" title="Salir">⎋</button>
+        <button class="logout" id="logoutBtn" title="Cerrar sesión">⎋ Salir</button>
       </div>
     </div>
   </div>
