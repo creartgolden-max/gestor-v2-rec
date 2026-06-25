@@ -386,7 +386,7 @@ function viewMiDia(uid,propio){
 
   // tareas de hoy
   h+='<div class="card"><div class="chead"><div class="t"><small>'+esc(usuarioNombre(uid))+'</small>Tareas de hoy · '+fmtFecha(hoyStr())+'</div>'+
-     (propio?'':'<button class="act sm" data-newtask="'+uid+'">Crear tarea</button>')+'</div><div class="clist">';
+     '<button class="act sm" data-newtask="'+uid+'">+ Crear tarea</button></div><div class="clist">';
   if(hoy.length) hoy.forEach(t=>{ h+=taskRow(t,puedeMarcar); });
   else h+='<div class="empty">No hay tareas para hoy.</div>';
   h+='</div></div>';
