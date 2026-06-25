@@ -48,10 +48,26 @@
   .ctrlbar select{font-family:Georgia,serif;font-size:13px;color:var(--green);border:1px solid var(--line);border-radius:8px;padding:5px 9px;background:#fff;cursor:pointer;margin-left:6px}
   .pill2{display:inline-block;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;margin-left:6px;letter-spacing:.04em;text-transform:uppercase;background:rgba(31,56,100,.1);color:var(--green)}
 
-  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
-  .tab{font-family:Arial,sans-serif;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff;color:var(--green);padding:9px 16px;border-radius:10px;transition:.15s}
-  .tab.on{background:var(--green);color:#fff;border-color:var(--green)}
-  .tab:hover:not(.on){border-color:var(--green)}
+  /* ===== Appbar navy (estilo v1) ===== */
+  .appbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:linear-gradient(120deg,var(--green-deep),var(--green));color:#fff;border-radius:16px;padding:11px 18px;margin-bottom:20px;box-shadow:var(--shadow)}
+  .appbar .brand{display:flex;align-items:center;gap:12px;min-width:0}
+  .appbar .mark{width:42px;height:42px;border-radius:12px;flex:none;background:linear-gradient(135deg,var(--accent),#5C8BFF);display:grid;place-items:center;font-family:Georgia,serif;font-weight:bold;font-size:20px;color:#fff;position:relative;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18),0 6px 16px rgba(46,117,182,.45)}
+  .appbar .mark .dot{position:absolute;top:7px;right:7px;width:6px;height:6px;border-radius:50%;background:var(--gold)}
+  .appbar .brand h1{font-family:Georgia,serif;font-size:18px;color:#fff;letter-spacing:.3px;line-height:1.05}
+  .appbar .brand p{font-family:Arial,sans-serif;font-size:11px;color:#A9BBE6;letter-spacing:.3px;margin-top:1px}
+  .nav{display:flex;gap:4px;flex-wrap:wrap;background:rgba(255,255,255,.08);padding:4px;border-radius:12px;flex:1 1 auto;justify-content:center}
+  .tab{font-family:Arial,sans-serif;font-size:13px;cursor:pointer;border:none;background:transparent;color:#C6D2F2;padding:8px 14px;border-radius:9px;transition:.15s;white-space:nowrap}
+  .tab.on{background:#fff;color:var(--green);font-weight:700}
+  .tab:hover:not(.on){background:rgba(255,255,255,.10)}
+  .appright{display:flex;align-items:center;gap:12px;font-family:Arial,sans-serif}
+  .appright .conn{font-size:11px;color:#9be0b4;white-space:nowrap}
+  .appright select{font-family:Georgia,serif;font-size:12px;color:#fff;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22);border-radius:8px;padding:5px 8px;cursor:pointer}
+  .appright select option{color:var(--ink)}
+  .userchip{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.08);border-radius:12px;padding:5px 9px}
+  .userchip .uav{width:32px;height:32px;border-radius:9px;flex:none;background:var(--accent);display:grid;place-items:center;font-weight:bold;font-size:12px;color:#fff}
+  .userchip .uname{font-family:Georgia,serif;font-size:13px;color:#fff;line-height:1.1}
+  .userchip .urole{font-size:10px;color:#A9BBE6}
+  .userchip .logout{background:transparent;border:none;color:#fff;cursor:pointer;font-size:17px;padding:2px 4px;line-height:1}
 
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-bottom:18px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px 18px}
@@ -59,6 +75,11 @@
   .stat .v{font-family:Georgia,serif;font-size:34px;font-weight:bold;line-height:1.1;margin-top:4px}
   .stat .s{font-family:Arial,sans-serif;font-size:11px;color:var(--muted);margin-top:2px}
 
+  .stat.dash{position:relative;overflow:hidden;padding-top:14px}
+  .stat.dash .sdeco{position:absolute;top:-22px;right:-22px;width:84px;height:84px;border-radius:50%;opacity:.55}
+  .stat.dash .sicon{position:relative;z-index:1;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:16px;margin-bottom:8px}
+  .stat.dash .v{position:relative;z-index:1;margin-top:2px}
+  .stat.dash .k{position:relative;z-index:1}
   .card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px}
   .card .chead{padding:15px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,#fbfaf6,#f6f3ec);gap:10px;flex-wrap:wrap}
   .card .chead .t{font-size:18px;color:var(--green)}
@@ -144,28 +165,28 @@
 <div id="toast" class="toast"></div>
 
 <div class="wrap" id="app" style="display:none">
-  <div class="ctrlbar">
-    <div class="who">En sesión: <b id="sessUser">—</b><span class="pill2" id="sessPill">—</span></div>
-    <div>
-      Periodo: <select id="periodSel"></select>
-      <button class="act ghost sm" id="logoutBtn" style="margin-left:12px">Salir</button>
+  <div class="appbar">
+    <div class="brand">
+      <div class="mark">R<span class="dot"></span></div>
+      <div>
+        <h1>Gestor de Proyectos</h1>
+        <p>RECOUROMEX · <span id="hoyLbl">2026</span></p>
+      </div>
+    </div>
+    <nav class="nav" id="tabs"></nav>
+    <div class="appright">
+      <span class="conn">● Conectado</span>
+      <select id="periodSel" title="Periodo"></select>
+      <div class="userchip">
+        <div class="uav" id="uAv">·</div>
+        <div>
+          <div class="uname" id="pName">—</div>
+          <div class="urole" id="pRole">—</div>
+        </div>
+        <button class="logout" id="logoutBtn" title="Salir">⎋</button>
+      </div>
     </div>
   </div>
-
-  <header class="top">
-    <div class="brand">
-      <div class="eyebrow">Recouromex · Motor de Tareas Diarias</div>
-      <h1>Gestor de Proyectos v2</h1>
-      <div class="sub" id="hoyLbl">—</div>
-    </div>
-    <div class="person">
-      <div class="lbl">Sesión</div>
-      <div class="name" id="pName">—</div>
-      <div class="role" id="pRole">—</div>
-    </div>
-  </header>
-
-  <div class="tabs" id="tabs"></div>
 
   <div id="view"></div>
 
@@ -287,8 +308,12 @@ function render(){
 /* =====================================================================
    VISTA: DASHBOARD (panel ejecutivo, se calcula de gpr2_proyectos)
    ===================================================================== */
-function statCard(k,v,s,col){
-  return '<div class="stat"><div class="k">'+esc(k)+'</div><div class="v" style="color:'+(col||'var(--green)')+'">'+v+'</div>'+(s?'<div class="s">'+esc(s)+'</div>':'')+'</div>';
+function statCard(k,v,col,soft,icon){
+  return '<div class="stat dash">'+
+    '<div class="sdeco" style="background:'+soft+'"></div>'+
+    '<div class="sicon" style="background:'+soft+';color:'+col+'">'+icon+'</div>'+
+    '<div class="v" style="color:'+col+'">'+v+'</div>'+
+    '<div class="k">'+esc(k)+'</div></div>';
 }
 function viewDashboard(){
   const ps=STATE.proyectos;
@@ -307,13 +332,13 @@ function viewDashboard(){
   const avs=ps.map(p=>avanceProyecto(p).p).filter(v=>v!=null);
   const avance=avs.length?Math.round(avs.reduce((a,b)=>a+b,0)/avs.length):0;
   let h='<div class="stats">'+
-    statCard('Proyectos', ps.length, '', 'var(--green)')+
-    statCard('En proceso', enProceso, '', 'var(--accent)')+
-    statCard('Concluidos', concluidos, '', 'var(--ok)')+
-    statCard('Sin comenzar', sinComenzar, '', 'var(--muted)')+
-    statCard('Avance global', avance+'%', '', color(avance))+
-    statCard('En riesgo', enRiesgo, '', enRiesgo?'var(--bad)':'var(--ok)')+
-    (cancelados?statCard('Cancelados', cancelados, '', 'var(--muted)'):'')+
+    statCard('Proyectos', ps.length, 'var(--green)', '#E8EFFF', '▦')+
+    statCard('En proceso', enProceso, 'var(--accent)', '#E8EFFF', '◴')+
+    statCard('Concluidos', concluidos, 'var(--ok)', '#E3F6EA', '✓')+
+    statCard('Sin comenzar', sinComenzar, 'var(--muted)', '#eef2f8', '○')+
+    statCard('Avance global', avance+'%', color(avance), '#FCF1DC', '↗')+
+    statCard('En riesgo', enRiesgo, enRiesgo?'var(--bad)':'var(--ok)', '#FCE4EC', '◆')+
+    (cancelados?statCard('Cancelados', cancelados, 'var(--muted)', '#eef2f8', '⊘'):'')+
     '</div>';
   // por estado
   const estados={}; ps.forEach(p=>{ const s=((p.status||'').trim())||'(sin status)'; estados[s]=(estados[s]||0)+1; });
@@ -908,11 +933,11 @@ async function doLogin(){
     const row=Array.isArray(data)?data[0]:data;
     if(!row){ msg.className='msg err'; msg.textContent='PIN incorrecto.'; return; }
     SESSION.pin=pin; SESSION.id=row.usuario_id; SESSION.nombre=row.nombre; SESSION.rol=row.rol;
-    document.getElementById('sessUser').textContent=row.nombre;
-    document.getElementById('sessPill').textContent=rolLabel(row.rol);
     document.getElementById('pName').textContent=row.nombre;
     document.getElementById('pRole').textContent=rolLabel(row.rol);
-    document.getElementById('hoyLbl').textContent='Hoy: '+fmtFecha(hoyStr());
+    const ini=String(row.nombre||'').trim().split(/\s+/).slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+    document.getElementById('uAv').textContent=ini||'·';
+    document.getElementById('hoyLbl').textContent=String(PERIODO||hoyStr()).slice(0,4);
     msg.className='msg info'; msg.textContent='Cargando…';
     await loadData();
     currentView=(row.rol==='colaborador')?'miDia':'dashboard'; supUser=SESSION.id;
