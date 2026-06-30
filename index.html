@@ -526,6 +526,7 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
   let h='<div class="trow" data-search="'+_s+'" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
   h+='<div class="ti">'+esc(p.nombre)+'</div>';
   h+='<div class="meta">Dueño: <b>'+esc(usuarioNombre(p.owner_id))+'</b> · '+esc(p.status||'—')+'</div>';
+  h+='<div class="meta">Inicio: <b>'+(p.inicio?fmtFecha(p.inicio):'—')+'</b> · Término: <b>'+(p.termino?fmtFecha(p.termino):'—')+'</b></div>';
   h+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">'+
      '<div style="flex:1;max-width:240px;height:9px;border-radius:6px;background:#e9e4d8;overflow:hidden"><i style="display:block;height:100%;width:'+(a.p==null?0:a.p)+'%;background:'+bc+'"></i></div>'+
      '<span class="pct" style="font-size:14px;color:'+bc+'">'+(a.p==null?'s/hitos':a.p+'%')+'</span>'+
@@ -942,6 +943,7 @@ function modalProyecto(projId){
       {type:'info',label:'Proyecto',value:p.nombre},
       {type:'info',label:'Dueño · Status',value: usuarioNombre(p.owner_id)+' · '+(p.status||'—')},
       {type:'info',label:'Proceso',value: p.proceso_id?procNombre(p.proceso_id):'sin proceso'},
+      {type:'info',label:'Inicio · Término',value:(p.inicio?fmtFecha(p.inicio):'—')+'   →   '+(p.termino?fmtFecha(p.termino):'—')},
       {key:'nota',label:'Nota',type:'textarea',value:p.nota||''},
       {key:'hitos',label:'Hitos (agrega nuevos; los existentes no se editan)',type:'hitos',value:Array.isArray(p.hitos)?p.hitos:[],addOnly:true}
     ];
