@@ -114,6 +114,11 @@
   button.act:disabled{opacity:.5;cursor:not-allowed}
   button.act:hover:not(:disabled){filter:brightness(.94)}
   .rowbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .trash{flex:0 0 auto;color:var(--bad)!important;border-color:var(--bad)!important;background:#fff!important}
+  .vtoggle{display:flex;gap:6px;margin:0 0 14px}
+  .vtab{font-family:Arial,sans-serif;font-size:13px;padding:7px 16px;border:1px solid var(--line);background:#fff;border-radius:8px;cursor:pointer;color:var(--muted)}
+  .vtab.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .dayhead{font-family:Arial,sans-serif;font-size:12px;font-weight:bold;color:var(--accent);text-transform:uppercase;letter-spacing:.04em;padding:11px 20px 4px}
 
   .overlay{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(22,41,74,.96),rgba(31,56,100,.96));padding:20px}
   .overlay.hidden{display:none}
@@ -214,7 +219,9 @@ const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierr
 let expandedProy=new Set();
 let proyFiltro='';
 let PERIODO=null, currentView=null, supUser=null;
+let miVista='hoy'; // 'hoy' | 'semana' | 'mes'  (vista de Mi dia)
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DIAS=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 
 const cfgOK = CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.startsWith("PEGAR")
            && CONFIG.SUPABASE_ANON_KEY && !CONFIG.SUPABASE_ANON_KEY.startsWith("PEGAR");
@@ -222,6 +229,10 @@ const cfgOK = CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.startsWith("PEGAR")
 /* ---- helpers ---- */
 function hoyStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function fmtFecha(s){ if(!s) return ''; const p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }
+function fmtFechaLarga(s){ const p=s.split('-'); const d=new Date(+p[0],+p[1]-1,+p[2]); return DIAS[d.getDay()]+' '+p[2]+'/'+p[1]; }
+function fechaISO(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function semanaRango(){ const d=new Date(); const dow=(d.getDay()+6)%7; const mon=new Date(d); mon.setDate(d.getDate()-dow); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {desde:fechaISO(mon),hasta:fechaISO(sun)}; }
+function mesRango(){ const y=+PERIODO.slice(0,4), m=+PERIODO.slice(5); const last=new Date(y,m,0).getDate(); return {desde:PERIODO+'-01', hasta:PERIODO+'-'+String(last).padStart(2,'0')}; }
 function color(v){ return v>=90?'var(--ok)': v>=80?'var(--warn)':'var(--bad)'; }
 function esc(s){ return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function toast(msg,kind){ const t=document.getElementById('toast'); t.textContent=msg; t.className='toast show'+(kind?(' '+kind):''); clearTimeout(t._h); t._h=setTimeout(()=>{t.className='toast';},3800); }
@@ -230,6 +241,7 @@ function rolLabel(r){ return r==='direccion'?'Dirección': r==='admin'?'Admin': 
 
 /* ---- % calculados ---- */
 function tareasDe(uid){ return STATE.tareas.filter(t=>t.usuario_id===uid); }
+function tareasRango(uid,desde,hasta){ return tareasDe(uid).filter(t=>t.fecha>=desde && t.fecha<=hasta).sort((a,b)=> a.fecha<b.fecha?-1:(a.fecha>b.fecha?1:(b.es_alta_direccion?1:0)-(a.es_alta_direccion?1:0)) ); }
 function listaHoy(uid){ const h=hoyStr(); return tareasDe(uid).filter(t=>t.fecha===h && ['pendiente','hecha','reprogramada'].includes(t.estado)); }
 function vencidasDe(uid){ return tareasDe(uid).filter(t=>t.estado==='vencida').sort((a,b)=>a.fecha<b.fecha?-1:1); }
 function prorrogaDe(uid){ return tareasDe(uid).filter(t=>t.estado==='prorroga_solicitada'); }
@@ -367,9 +379,12 @@ function taskRow(t,puedeMarcar){
   const chk = puedeMarcar
     ? '<input type="checkbox" class="chk" data-mark="'+t.id+'" '+(done?'checked':'')+'>'
     : '<span style="width:22px;flex:0 0 auto;text-align:center;color:var(--muted)">'+(done?'✓':'·')+'</span>';
+  const del = puedeMarcar
+    ? '<button class="act ghost sm trash" title="Eliminar" data-borrar="'+t.id+'" data-rut="'+(t.tipo==='rutina'&&t.rutina_id?t.rutina_id:'')+'">🗑</button>'
+    : '';
   return '<div class="trow">'+chk+
     '<div class="body"><div class="ti'+(done?' done':'')+'">'+esc(t.titulo)+'</div>'+de+
-    '<div>'+ad+' '+rut+'</div></div></div>';
+    '<div>'+ad+' '+rut+'</div></div>'+del+'</div>';
 }
 function viewMiDia(uid,propio){
   const d=pctDiaVivo(uid); const m=pctMes(uid);
@@ -384,6 +399,19 @@ function viewMiDia(uid,propio){
     '<div class="stat"><div class="k">% del mes ('+MES[parseInt(PERIODO.slice(5))-1]+')</div><div class="v" style="color:'+(m==null?'var(--muted)':color(m))+'">'+(m==null?'—':m+'%')+'</div><div class="s">promedio de días cerrados</div></div>'+
     '<div class="stat"><div class="k">Vencidas con candado</div><div class="v" style="color:'+(venc.length?'var(--bad)':'var(--ok)')+'">'+venc.length+'</div><div class="s">requieren reprogramar / prórroga</div></div>'+
     '</div>';
+
+  const vista = propio ? miVista : 'hoy';
+  if(propio){
+    h+='<div class="vtoggle">'+
+       [['hoy','Hoy'],['semana','Semana'],['mes','Mes']].map(k=>'<button class="vtab'+(vista===k[0]?' on':'')+'" data-mivista="'+k[0]+'">'+k[1]+'</button>').join('')+
+       '</div>';
+  }
+  if(vista!=='hoy'){
+    const rango = vista==='semana'? semanaRango() : mesRango();
+    const titulo = vista==='semana'? 'Semana actual' : (MES[+PERIODO.slice(5)-1]+' '+PERIODO.slice(0,4));
+    h+=vistaRango(uid, rango, titulo);
+    return h;
+  }
 
   // tareas de hoy
   h+='<div class="card"><div class="chead"><div class="t"><small>'+esc(usuarioNombre(uid))+'</small>Tareas de hoy · '+fmtFecha(hoyStr())+'</div>'+
@@ -413,6 +441,25 @@ function viewMiDia(uid,propio){
   else h+='<div class="empty">Sin tareas vencidas. 🎉</div>';
   h+='</div></div>';
   return h;
+}
+
+function vistaRango(uid,rango,titulo){
+  const arr=tareasRango(uid,rango.desde,rango.hasta);
+  let h='<div class="card"><div class="chead"><div class="t"><small>'+esc(usuarioNombre(uid))+'</small>'+esc(titulo)+'</div>'+
+     '<button class="act sm" data-newtask="'+uid+'">+ Crear tarea</button></div><div class="clist">';
+  if(!arr.length){ h+='<div class="empty">No hay tareas en este periodo.</div>'; }
+  else {
+    let cur=null;
+    arr.forEach(t=>{
+      if(t.fecha!==cur){ cur=t.fecha; h+='<div class="dayhead">'+fmtFechaLarga(t.fecha)+'</div>'; }
+      const ic = t.estado==='hecha'?'✓': t.estado==='vencida'?'🔒': t.estado==='prorroga_solicitada'?'⏳':'·';
+      const ad = t.es_alta_direccion?'<span class="tagad">⚡ Alta Dirección</span>':'';
+      const rut = t.tipo==='rutina'?'<span class="tagrut">rutina</span>':'';
+      h+='<div class="trow"><span style="width:22px;flex:0 0 auto;text-align:center;color:var(--muted)">'+ic+'</span>'+
+         '<div class="body"><div class="ti'+(t.estado==='hecha'?' done':'')+'">'+esc(t.titulo)+'</div><div>'+ad+' '+rut+'</div></div></div>';
+    });
+  }
+  h+='</div></div>'; return h;
 }
 
 /* =====================================================================
@@ -637,6 +684,10 @@ function bindViewEvents(){
   v.querySelectorAll('[data-ver]').forEach(el=>el.addEventListener('click',e=>{ supUser=+e.target.dataset.ver; render(); window.scrollTo(0,document.body.scrollHeight); }));
   // crear tarea
   v.querySelectorAll('[data-newtask]').forEach(el=>el.addEventListener('click',e=>modalCrearTarea(+e.target.dataset.newtask)));
+  // eliminar tarea / rutina
+  v.querySelectorAll('[data-borrar]').forEach(el=>el.addEventListener('click',e=>{ const b=e.target.closest('[data-borrar]'); borrarTarea(+b.dataset.borrar, b.dataset.rut?+b.dataset.rut:null); }));
+  // toggle vista Mi dia (hoy/semana/mes)
+  v.querySelectorAll('[data-mivista]').forEach(el=>el.addEventListener('click',e=>{ miVista=e.target.closest('[data-mivista]').dataset.mivista; render(); }));
   // reprogramar
   v.querySelectorAll('[data-reprog]').forEach(el=>el.addEventListener('click',e=>modalReprogramar(+e.target.dataset.reprog)));
   // solicitar prorroga
@@ -692,7 +743,7 @@ function openModal(opts){
     if(f.type==='checkbox'){
       h+='<div class="fld chkline"><input type="checkbox" id="f_'+f.key+'" '+(f.value?'checked':'')+'><label for="f_'+f.key+'">'+esc(f.label)+'</label></div>';
     } else if(f.type==='select'){
-      h+='<div class="fld"><label>'+esc(f.label)+'</label><select id="f_'+f.key+'">'+
+      h+='<div class="fld" id="fld_'+f.key+'"><label>'+esc(f.label)+'</label><select id="f_'+f.key+'">'+
          f.options.map(o=>'<option value="'+esc(o.v)+'"'+(o.v===f.value?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select></div>';
     } else if(f.type==='textarea'){
       h+='<div class="fld"><label>'+esc(f.label)+'</label><textarea id="f_'+f.key+'" placeholder="'+esc(f.ph||'')+'">'+esc(f.value||'')+'</textarea></div>';
@@ -711,7 +762,7 @@ function openModal(opts){
     } else if(f.type==='info'){
       h+='<div class="fld"><label>'+esc(f.label)+'</label><div style="font-family:Arial;font-size:14px;color:var(--ink);padding:4px 0;font-weight:bold">'+esc(f.value||'—')+'</div></div>';
     } else {
-      h+='<div class="fld"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
+      h+='<div class="fld" id="fld_'+f.key+'"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
     }
   });
   h+='<div class="mbtns"><button class="act ghost" id="mCancel">Cancelar</button><button class="act" id="mOk">'+esc(opts.ok||'Guardar')+'</button></div>';
@@ -764,6 +815,7 @@ function openModal(opts){
     try{ await opts.onSubmit(vals); closeModal(); }
     catch(err){ console.error(err); toast(err.message||String(err),'err'); okBtn.disabled=false; okBtn.textContent=opts.ok||'Guardar'; }
   });
+  if(opts.onRender){ try{ opts.onRender(box); }catch(e){ console.warn('onRender',e); } }
 }
 function closeModal(){ document.getElementById('modalWrap').classList.add('hidden'); document.getElementById('modalBox').innerHTML=''; }
 
@@ -781,12 +833,28 @@ async function marcarHecha(tareaId,hecha){
   }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); await refrescar(); }
 }
 
+async function borrarTarea(tareaId,rutinaId){
+  let fn,params;
+  if(rutinaId){
+    if(!confirm('Esta es una RUTINA. ¿Eliminar la rutina completa? Dejará de aparecer en adelante (lo ya marcado como hecho se conserva).')) return;
+    fn='gpr2_borrar_rutina'; params={p_pin:SESSION.pin,p_rutina_id:rutinaId};
+  } else {
+    if(!confirm('¿Eliminar esta tarea?')) return;
+    fn='gpr2_borrar_tarea'; params={p_pin:SESSION.pin,p_tarea_id:tareaId};
+  }
+  try{ const r=await db.rpc(fn,params); if(r.error) throw r.error; await refrescar(); toast(rutinaId?'Rutina eliminada ✓':'Tarea eliminada ✓','ok'); }
+  catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); }
+}
+
 function modalCrearTarea(uid){
   const esDir=SESSION.rol==='direccion';
   const fields=[
     {key:'titulo',label:'Título',type:'text',ph:'Qué hay que hacer'},
     {key:'descripcion',label:'Descripción (opcional)',type:'textarea',ph:''},
-    {key:'tipo',label:'Tipo',type:'select',value:'puntual',options:[{v:'puntual',t:'Puntual (una fecha)'},{v:'rutina',t:'Rutina diaria (se repite)'}]},
+    {key:'tipo',label:'Tipo',type:'select',value:'puntual',options:[{v:'puntual',t:'Puntual (una fecha)'},{v:'rutina',t:'Rutina (se repite)'}]},
+    {key:'frecuencia',label:'¿Cada cuándo se repite?',type:'select',value:'diaria',options:[{v:'diaria',t:'Diaria (todos los días)'},{v:'semanal',t:'Semanal (un día de la semana)'},{v:'mensual',t:'Mensual (un día del mes)'}]},
+    {key:'dia_semana',label:'¿Qué día de la semana?',type:'select',value:'1',options:[{v:'1',t:'Lunes'},{v:'2',t:'Martes'},{v:'3',t:'Miércoles'},{v:'4',t:'Jueves'},{v:'5',t:'Viernes'},{v:'6',t:'Sábado'},{v:'0',t:'Domingo'}]},
+    {key:'dia_mes',label:'¿Qué día del mes? (1 a 31)',type:'number',value:'1',min:1,max:31},
     {key:'fecha',label:'Fecha (solo puntual)',type:'date',value:hoyStr()}
   ];
   if(esDir) fields.push({key:'alta',label:'⚡ Marcar como Solicitud de Alta Dirección',type:'checkbox',value:false});
@@ -794,10 +862,24 @@ function modalCrearTarea(uid){
     title:'Crear tarea',
     desc:'Para: <b>'+esc(usuarioNombre(uid))+'</b>',
     fields,
+    onRender:(box)=>{
+      const tipoEl=box.querySelector('#f_tipo'), frecEl=box.querySelector('#f_frecuencia');
+      const upd=()=>{
+        const esRut=tipoEl.value==='rutina', fr=frecEl.value;
+        const set=(k,on)=>{ const e=box.querySelector('#fld_'+k); if(e) e.style.display=on?'':'none'; };
+        set('frecuencia',esRut);
+        set('dia_semana',esRut && fr==='semanal');
+        set('dia_mes',esRut && fr==='mensual');
+        set('fecha',!esRut);
+      };
+      tipoEl.addEventListener('change',upd); frecEl.addEventListener('change',upd); upd();
+    },
     onSubmit:async(v)=>{
       if(!v.titulo.trim()) throw new Error('Escribe un título');
       if(v.tipo==='rutina'){
-        const r=await db.rpc('gpr2_crear_rutina',{p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim()});
+        const fr=v.frecuencia||'diaria';
+        const r=await db.rpc('gpr2_crear_rutina',{p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim(),
+          p_frecuencia:fr, p_dia_semana: fr==='semanal'? parseInt(v.dia_semana,10): null, p_dia_mes: fr==='mensual'? parseInt(v.dia_mes,10): null});
         if(r.error) throw r.error;
         const g=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoyStr()}); if(g.error) throw g.error;
       } else {
