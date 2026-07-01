@@ -603,9 +603,10 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
         ? '<button class="act ghost sm" style="padding:2px 7px;font-size:10px" data-solpc="'+p.id+'|'+esc(ht.id)+'|prorroga">prórroga</button>'+
           '<button class="act danger sm" style="padding:2px 7px;font-size:10px" data-solpc="'+p.id+'|'+esc(ht.id)+'|cancelacion">cancelar</button>'
         : '';
+      const quienChip=ht.quien?'<span style="font-family:Arial;font-size:11px;color:var(--accent);white-space:nowrap">👤 '+esc(ht.quien)+'</span>':'';
       h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;flex-wrap:wrap">'+chk+
          '<span style="flex:1;min-width:120px;font-family:Arial;font-size:13px'+((ht.hecho||cancel)?';text-decoration:line-through;color:var(--muted)':'')+'">'+esc(ht.texto||'')+'</span>'+
-         badge+'<span class="rowbtns">'+acts+'</span></div>';
+         quienChip+badge+'<span class="rowbtns">'+acts+'</span></div>';
     });
     h+='</div>';
   }
@@ -725,14 +726,16 @@ function teamRowHTML(nombre,resp){
     '<input class="teamresp" placeholder="responsabilidad" value="'+esc(resp||'')+'" style="flex:1">'+
     '<button type="button" class="teamdel act danger sm" title="Quitar">×</button></div>';
 }
-function hitoRowHTML(texto,hitoJson,locked){
+function hitoRowHTML(texto,hitoJson,locked,quien){
   if(locked){
     return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
       '<span style="flex:1;font-family:Arial;font-size:13px;color:var(--muted)">'+esc(texto||'')+'</span>'+
+      (quien?'<span class="tagrut" style="white-space:nowrap">'+esc(quien)+'</span>':'')+
       '<span style="font-size:10px;color:var(--muted);font-family:Arial;white-space:nowrap">existente</span></div>';
   }
   return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
     '<input class="hitotext" placeholder="hito / entregable" value="'+esc(texto||'')+'" style="flex:1">'+
+    '<select class="hitoquien" data-cur="'+esc(quien||'')+'" title="Responsable de este paso" style="flex:0 0 132px;font-family:Arial;font-size:12px"><option value="">— Quién —</option>'+(quien?'<option value="'+esc(quien)+'" selected>'+esc(quien)+'</option>':'')+'</select>'+
     '<button type="button" class="hitodel act danger sm" title="Quitar">×</button></div>';
 }
 function openModal(opts){
@@ -773,6 +776,19 @@ function openModal(opts){
   h+='<div class="mbtns"><button class="act ghost" id="mCancel">Cancelar</button><button class="act" id="mOk">'+esc(opts.ok||'Guardar')+'</button></div>';
   box.innerHTML=h;
   document.getElementById('modalWrap').classList.remove('hidden');
+  // ---- Quien por hito: pobla cada selector con los integrantes del equipo ----
+  const _hitosF=opts.fields.find(f=>f.type==='hitos');
+  const _quienExtra=(_hitosF&&_hitosF.quienPool)||[];
+  function refreshQuien(){
+    const names=[...new Set(_quienExtra.concat([...box.querySelectorAll('.teamrow')].map(r=>r.dataset.nombre).filter(Boolean)))];
+    box.querySelectorAll('.hitoquien').forEach(sel=>{
+      const cur=sel.value||sel.getAttribute('data-cur')||'';
+      const all=(cur && names.indexOf(cur)<0)? names.concat([cur]) : names;
+      let o='<option value="">— Quién —</option>';
+      all.forEach(n=>{ o+='<option value="'+esc(n)+'"'+(n===cur?' selected':'')+'>'+esc(n)+'</option>'; });
+      sel.innerHTML=o;
+    });
+  }
   // widgets de equipo (selector + agregar/quitar)
   opts.fields.filter(f=>f.type==='team').forEach(f=>{
     const list=document.getElementById('f_'+f.key+'_list');
@@ -780,19 +796,20 @@ function openModal(opts){
     document.getElementById('f_'+f.key+'_add').addEventListener('click',()=>{
       const nom=document.getElementById('f_'+f.key+'_sel').value;
       if(!nom || [...list.querySelectorAll('.teamrow')].some(r=>r.dataset.nombre===nom)) return;
-      list.insertAdjacentHTML('beforeend', teamRowHTML(nom,''));
+      list.insertAdjacentHTML('beforeend', teamRowHTML(nom,'')); refreshQuien();
     });
-    list.addEventListener('click',e=>{ if(e.target.classList.contains('teamdel')) e.target.closest('.teamrow').remove(); });
+    list.addEventListener('click',e=>{ if(e.target.classList.contains('teamdel')){ e.target.closest('.teamrow').remove(); refreshQuien(); } });
   });
   // widgets de hitos (agregar uno por uno)
   opts.fields.filter(f=>f.type==='hitos').forEach(f=>{
     const list=document.getElementById('f_'+f.key+'_list');
-    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht), f.addOnly)); });
-    const addH=()=>{ const inp=document.getElementById('f_'+f.key+'_in'); const t=(inp.value||'').trim(); if(!t) return; list.insertAdjacentHTML('beforeend', hitoRowHTML(t,'')); inp.value=''; inp.focus(); };
+    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht), f.addOnly, ht.quien)); });
+    const addH=()=>{ const inp=document.getElementById('f_'+f.key+'_in'); const t=(inp.value||'').trim(); if(!t) return; list.insertAdjacentHTML('beforeend', hitoRowHTML(t,'',false,'')); inp.value=''; inp.focus(); refreshQuien(); };
     document.getElementById('f_'+f.key+'_add').addEventListener('click',addH);
     document.getElementById('f_'+f.key+'_in').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addH(); } });
     list.addEventListener('click',e=>{ if(e.target.classList.contains('hitodel')) e.target.closest('.hitorow').remove(); });
   });
+  refreshQuien();
   document.getElementById('mCancel').addEventListener('click',closeModal);
   document.getElementById('mOk').addEventListener('click',async()=>{
     const vals={};
@@ -806,9 +823,11 @@ function openModal(opts){
         const list=document.getElementById('f_'+f.key+'_list');
         vals[f.key]=[...list.querySelectorAll('.hitorow')].map((r,i)=>{
           const inp=r.querySelector('.hitotext');
+          const selQ=r.querySelector('.hitoquien');
           let base={}; if(r.dataset.h){ try{ base=JSON.parse(r.dataset.h); }catch(_){} }
           const texto = inp ? (inp.value||'').trim() : (base.texto||'');
-          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:''}, base, {texto});
+          const quien = selQ ? (selQ.value||'') : (base.quien||'');
+          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:''}, base, {texto, quien});
         }).filter(x=>x.texto);
         return;
       }
@@ -1028,6 +1047,10 @@ function modalProyecto(projId){
   const restringido = !esNew && !esDir;                   // admin/colaborador editando = solo agregar
   const userOpts = STATE.usuarios.slice().sort((a,b)=>a.id-b.id).map(u=>({v:String(u.id),t:u.nombre}));
   const procOpts = [{v:'',t:'(sin proceso)'}].concat(STATE.procesos.map(pr=>({v:pr.id,t:pr.nombre})));
+  // Opciones del v1 (Alma): origen del proyecto y responsable de la revisión
+  const FUENTES=['Planeación estratégica','Matriz de riesgo','Acción correctiva','Plan de mejora','Minuta de reunión','Agenda de ventas','Auditoría interna','Auditoría externa'];
+  const REVISORES=['Dirección General','Comité de Calidad','Comité de Mejora Continua','Coord. Administrativa','Coord. Administrativa – Alma','Gerencia – Ing. Rodrigo','Gerencia – Paty Yebra'];
+  const optList=(arr,vacio,actual)=>{ const base=arr.slice(); if(actual && base.indexOf(actual)<0) base.push(actual); return [{v:'',t:vacio}].concat(base.map(x=>({v:x,t:x}))); };
   let fields, titulo;
   if(restringido){
     // EDITAR (admin/colaborador) = SOLO AGREGAR nota + hitos nuevos
@@ -1038,7 +1061,7 @@ function modalProyecto(projId){
       {type:'info',label:'Proceso',value: p.proceso_id?procNombre(p.proceso_id):'sin proceso'},
       {type:'info',label:'Inicio · Término',value:(p.inicio?fmtFecha(p.inicio):'—')+'   →   '+(p.termino?fmtFecha(p.termino):'—')},
       {key:'nota',label:'Nota',type:'textarea',value:p.nota||''},
-      {key:'hitos',label:'Hitos (agrega nuevos; los existentes no se editan)',type:'hitos',value:Array.isArray(p.hitos)?p.hitos:[],addOnly:true}
+      {key:'hitos',label:'Hitos (agrega nuevos; los existentes no se editan)',type:'hitos',value:Array.isArray(p.hitos)?p.hitos:[],addOnly:true,quienPool:integrantesList(p).map(m=>m.nombre)}
     ];
   } else {
     // CREAR (todos) o EDITAR Direccion = completo
@@ -1046,7 +1069,9 @@ function modalProyecto(projId){
     fields=[
       {key:'nombre',label:'Nombre',type:'text',value:p?p.nombre:''},
       {key:'status',label:'Status',type:'text',value:p?(p.status||''):'En proceso'},
-      {key:'modalidad',label:'Modalidad',type:'select',value:p?(p.modalidad||'individual'):'individual',options:[{v:'individual',t:'Individual'},{v:'grupo',t:'Grupo (equipo)'}]}
+      {key:'modalidad',label:'Modalidad',type:'select',value:p?(p.modalidad||'individual'):'individual',options:[{v:'individual',t:'Individual'},{v:'grupo',t:'Grupo (equipo)'}]},
+      {key:'fuente',label:'Fuente (de dónde se origina)',type:'select',value:p?(p.fuente||''):'',options:optList(FUENTES,'(sin fuente)',p?p.fuente:'')},
+      {key:'revisor',label:'Responsable de revisión',type:'select',value:p?(p.revisor||''):'',options:optList(REVISORES,'(sin asignar)',p?p.revisor:'')}
     ];
     if(esGestion) fields.push({key:'owner',label:'Dueño / líder',type:'select',value:p?String(p.owner_id):String(SESSION.id),options:userOpts});
     fields.push({key:'proceso',label:'Proceso (para el termómetro)',type:'select',value:p?(p.proceso_id||''):'',options:procOpts});
@@ -1075,9 +1100,9 @@ function modalProyecto(projId){
       const team=(v.integrantes||[]).filter(m=>m && m.nombre);
       const r=await db.rpc('gpr2_upsert_proyecto',{
         p_pin:SESSION.pin, p_id:projId, p_nombre:v.nombre.trim(),
-        p_fuente:p?p.fuente:null, p_modalidad:v.modalidad||'individual',
+        p_fuente:v.fuente||null, p_modalidad:v.modalidad||'individual',
         p_owner_id:v.owner?parseInt(v.owner):(p?p.owner_id:null), p_proceso_id:v.proceso||null,
-        p_revisor:p?p.revisor:null, p_status:v.status||null,
+        p_revisor:v.revisor||null, p_status:v.status||null,
         p_inicio:v.inicio||null, p_termino:v.termino||null,
         p_nota:v.nota||null, p_obs:p?p.obs:null, p_hitos:hitos, p_integrantes:team
       });
