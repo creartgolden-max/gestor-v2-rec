@@ -374,7 +374,7 @@ function viewDashboard(){
 function taskRow(t,puedeMarcar){
   const done=t.estado==='hecha';
   const ad = t.es_alta_direccion? '<span class="tagad">⚡ Solicitud de Alta Dirección</span>':'';
-  const rut = t.tipo==='rutina'? '<span class="tagrut">rutina diaria</span>':'';
+  const rut = t.tipo==='rutina'? '<span class="tagrut">rutina</span>':'';
   const de = t.descripcion? '<div class="de">'+esc(t.descripcion)+'</div>':'';
   const chk = puedeMarcar
     ? '<input type="checkbox" class="chk" data-mark="'+t.id+'" '+(done?'checked':'')+'>'
@@ -761,6 +761,11 @@ function openModal(opts){
          '<div id="f_'+f.key+'_list"></div></div>';
     } else if(f.type==='info'){
       h+='<div class="fld"><label>'+esc(f.label)+'</label><div style="font-family:Arial;font-size:14px;color:var(--ink);padding:4px 0;font-weight:bold">'+esc(f.value||'—')+'</div></div>';
+    } else if(f.type==='weekdays'){
+      const DS=[[1,'Lun'],[2,'Mar'],[3,'Mié'],[4,'Jue'],[5,'Vie'],[6,'Sáb'],[0,'Dom']];
+      h+='<div class="fld" id="fld_'+f.key+'"><label>'+esc(f.label)+'</label><div id="wd_'+f.key+'" style="display:flex;flex-wrap:wrap;gap:6px">'+
+         DS.map(d=>'<label style="display:inline-flex;align-items:center;gap:5px;border:1px solid #cfd6e4;border-radius:8px;padding:5px 10px;font-family:Arial;font-size:13px;cursor:pointer;background:#fff"><input type="checkbox" value="'+d[0]+'"'+(((f.value||[]).indexOf(d[0])>=0)?' checked':'')+'>'+d[1]+'</label>').join('')+
+         '</div></div>';
     } else {
       h+='<div class="fld" id="fld_'+f.key+'"><label>'+esc(f.label)+'</label><input id="f_'+f.key+'" type="'+f.type+'" '+(f.min!=null?'min="'+f.min+'"':'')+' '+(f.max!=null?'max="'+f.max+'"':'')+' placeholder="'+esc(f.ph||'')+'" value="'+esc(f.value||'')+'"></div>';
     }
@@ -808,6 +813,11 @@ function openModal(opts){
         return;
       }
       if(f.type==='info') return;
+      if(f.type==='weekdays'){
+        const wrap=document.getElementById('wd_'+f.key);
+        vals[f.key]= wrap? [...wrap.querySelectorAll('input:checked')].map(c=>+c.value) : [];
+        return;
+      }
       const el=document.getElementById('f_'+f.key);
       vals[f.key]= f.type==='checkbox'? el.checked : el.value;
     });
@@ -852,8 +862,8 @@ function modalCrearTarea(uid){
     {key:'titulo',label:'Título',type:'text',ph:'Qué hay que hacer'},
     {key:'descripcion',label:'Descripción (opcional)',type:'textarea',ph:''},
     {key:'tipo',label:'Tipo',type:'select',value:'puntual',options:[{v:'puntual',t:'Puntual (una fecha)'},{v:'rutina',t:'Rutina (se repite)'}]},
-    {key:'frecuencia',label:'¿Cada cuándo se repite?',type:'select',value:'diaria',options:[{v:'diaria',t:'Diaria (todos los días)'},{v:'semanal',t:'Semanal (un día de la semana)'},{v:'mensual',t:'Mensual (un día del mes)'}]},
-    {key:'dia_semana',label:'¿Qué día de la semana?',type:'select',value:'1',options:[{v:'1',t:'Lunes'},{v:'2',t:'Martes'},{v:'3',t:'Miércoles'},{v:'4',t:'Jueves'},{v:'5',t:'Viernes'},{v:'6',t:'Sábado'},{v:'0',t:'Domingo'}]},
+    {key:'frecuencia',label:'¿Cada cuándo se repite?',type:'select',value:'diaria',options:[{v:'diaria',t:'Diaria (todos los días)'},{v:'semanal',t:'Semanal (uno o varios días)'},{v:'mensual',t:'Mensual (un día del mes)'}]},
+    {key:'dias_semana',label:'¿Qué días de la semana? (marca uno o varios)',type:'weekdays',value:[1]},
     {key:'dia_mes',label:'¿Qué día del mes? (1 a 31)',type:'number',value:'1',min:1,max:31},
     {key:'fecha',label:'Fecha (solo puntual)',type:'date',value:hoyStr()}
   ];
@@ -868,7 +878,7 @@ function modalCrearTarea(uid){
         const esRut=tipoEl.value==='rutina', fr=frecEl.value;
         const set=(k,on)=>{ const e=box.querySelector('#fld_'+k); if(e) e.style.display=on?'':'none'; };
         set('frecuencia',esRut);
-        set('dia_semana',esRut && fr==='semanal');
+        set('dias_semana',esRut && fr==='semanal');
         set('dia_mes',esRut && fr==='mensual');
         set('fecha',!esRut);
       };
@@ -878,8 +888,9 @@ function modalCrearTarea(uid){
       if(!v.titulo.trim()) throw new Error('Escribe un título');
       if(v.tipo==='rutina'){
         const fr=v.frecuencia||'diaria';
+        if(fr==='semanal' && (!v.dias_semana || !v.dias_semana.length)) throw new Error('Elige al menos un día de la semana');
         const r=await db.rpc('gpr2_crear_rutina',{p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim(),
-          p_frecuencia:fr, p_dia_semana: fr==='semanal'? parseInt(v.dia_semana,10): null, p_dia_mes: fr==='mensual'? parseInt(v.dia_mes,10): null});
+          p_frecuencia:fr, p_dias_semana: fr==='semanal'? v.dias_semana : null, p_dia_mes: fr==='mensual'? parseInt(v.dia_mes,10): null});
         if(r.error) throw r.error;
         const g=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoyStr()}); if(g.error) throw g.error;
       } else {
