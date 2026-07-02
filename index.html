@@ -242,6 +242,27 @@ function rolLabel(r){ return r==='direccion'?'Dirección': r==='admin'?'Admin': 
 /* ---- % calculados ---- */
 function tareasDe(uid){ return STATE.tareas.filter(t=>t.usuario_id===uid); }
 function tareasRango(uid,desde,hasta){ return tareasDe(uid).filter(t=>t.fecha>=desde && t.fecha<=hasta).sort((a,b)=> a.fecha<b.fecha?-1:(a.fecha>b.fecha?1:(b.es_alta_direccion?1:0)-(a.es_alta_direccion?1:0)) ); }
+// ¿la rutina ocurre en esta fecha? (misma regla que gpr2_generar_rutinas_hoy; dow 0=Dom)
+function ocurreRutina(rt,d){
+  const f=rt.frecuencia||'diaria';
+  if(f==='diaria') return true;
+  if(f==='semanal'){ const dow=d.getDay();
+    if(Array.isArray(rt.dias_semana)&&rt.dias_semana.length) return rt.dias_semana.indexOf(dow)>=0;
+    if(rt.dia_semana!=null) return dow===rt.dia_semana; return false; }
+  if(f==='mensual'){ const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return d.getDate()===Math.min(rt.dia_mes||1,last); }
+  return false;
+}
+// Ocurrencias PREVISTAS de rutinas en el rango que aun no tienen tarea real (para Semana/Mes)
+function previstasRango(uid,desde,hasta,yaSet){
+  const rts=STATE.rutinas.filter(r=>r.usuario_id===uid && r.activo!==false);
+  if(!rts.length) return [];
+  const out=[]; const d=new Date(desde+'T00:00:00'); const fin=new Date(hasta+'T00:00:00');
+  while(d<=fin){ const iso=fechaISO(d);
+    rts.forEach(rt=>{ if(ocurreRutina(rt,d) && !yaSet.has(rt.id+'|'+iso)) out.push({fecha:iso,titulo:rt.titulo,tipo:'rutina',prevista:true,es_alta_direccion:false}); });
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
 function listaHoy(uid){ const h=hoyStr(); return tareasDe(uid).filter(t=>t.fecha===h && ['pendiente','hecha','reprogramada'].includes(t.estado)); }
 function vencidasDe(uid){ return tareasDe(uid).filter(t=>t.estado==='vencida').sort((a,b)=>a.fecha<b.fecha?-1:1); }
 function prorrogaDe(uid){ return tareasDe(uid).filter(t=>t.estado==='prorroga_solicitada'); }
@@ -444,7 +465,10 @@ function viewMiDia(uid,propio){
 }
 
 function vistaRango(uid,rango,titulo){
-  const arr=tareasRango(uid,rango.desde,rango.hasta);
+  const real=tareasRango(uid,rango.desde,rango.hasta);
+  const yaSet=new Set(real.filter(t=>t.rutina_id!=null).map(t=>t.rutina_id+'|'+t.fecha));
+  const prev=previstasRango(uid,rango.desde,rango.hasta,yaSet);
+  const arr=real.concat(prev).sort((a,b)=> a.fecha<b.fecha?-1:(a.fecha>b.fecha?1:(b.es_alta_direccion?1:0)-(a.es_alta_direccion?1:0)) );
   let h='<div class="card"><div class="chead"><div class="t"><small>'+esc(usuarioNombre(uid))+'</small>'+esc(titulo)+'</div>'+
      '<button class="act sm" data-newtask="'+uid+'">+ Crear tarea</button></div><div class="clist">';
   if(!arr.length){ h+='<div class="empty">No hay tareas en este periodo.</div>'; }
@@ -452,11 +476,12 @@ function vistaRango(uid,rango,titulo){
     let cur=null;
     arr.forEach(t=>{
       if(t.fecha!==cur){ cur=t.fecha; h+='<div class="dayhead">'+fmtFechaLarga(t.fecha)+'</div>'; }
-      const ic = t.estado==='hecha'?'✓': t.estado==='vencida'?'🔒': t.estado==='prorroga_solicitada'?'⏳':'·';
+      const ic = t.prevista?'◻': t.estado==='hecha'?'✓': t.estado==='vencida'?'🔒': t.estado==='prorroga_solicitada'?'⏳':'·';
       const ad = t.es_alta_direccion?'<span class="tagad">⚡ Alta Dirección</span>':'';
       const rut = t.tipo==='rutina'?'<span class="tagrut">rutina</span>':'';
+      const prevTag = t.prevista?'<span class="tagrut" style="opacity:.65">programada</span>':'';
       h+='<div class="trow"><span style="width:22px;flex:0 0 auto;text-align:center;color:var(--muted)">'+ic+'</span>'+
-         '<div class="body"><div class="ti'+(t.estado==='hecha'?' done':'')+'">'+esc(t.titulo)+'</div><div>'+ad+' '+rut+'</div></div></div>';
+         '<div class="body"><div class="ti'+(t.estado==='hecha'?' done':'')+(t.prevista?'" style="color:var(--muted)':'')+'">'+esc(t.titulo)+'</div><div>'+ad+' '+rut+' '+prevTag+'</div></div></div>';
     });
   }
   h+='</div></div>'; return h;
