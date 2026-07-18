@@ -280,11 +280,12 @@ function pctMes(uid){
 /* =====================================================================
    CARGA DE DATOS (incluye el cierre lazy + generar rutinas de hoy)
    ===================================================================== */
-// Carga TODAS las tareas activas paginando (Supabase corta en 1000 por pagina).
-async function fetchTareasActivas(){
+// Carga TODAS las filas paginando (Supabase corta en 1000 por pagina).
+// build = funcion que crea una consulta NUEVA cada vez (db.from(...).select(...)...).
+async function fetchPaged(build){
   let all=[], from=0;
   for(;;){
-    const r=await db.from('gpr2_tareas').select('*').eq('activo',true).order('id',{ascending:true}).range(from,from+999);
+    const r=await build().order('id',{ascending:true}).range(from,from+999);
     if(r.error) return {data:null, error:r.error};
     all=all.concat(r.data||[]);
     if((r.data||[]).length<1000) break;
@@ -302,8 +303,8 @@ async function loadData(){
 
   const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos,proysol]=await Promise.all([
     db.from('gpr2_usuarios_publico').select('*').eq('activo',true),
-    fetchTareasActivas(),
-    db.from('gpr2_cierre_dia').select('*'),
+    fetchPaged(()=>db.from('gpr2_tareas').select('*').eq('activo',true)),
+    fetchPaged(()=>db.from('gpr2_cierre_dia').select('*')),
     db.from('gpr2_prorrogas').select('*').eq('estado','pendiente'),
     db.from('rev_procesos').select('*').eq('activo',true).order('orden'),
     db.from('gpr2_proyectos_cierre').select('*'),
