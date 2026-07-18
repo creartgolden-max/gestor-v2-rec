@@ -947,6 +947,9 @@ function modalCrearTarea(uid){
       if(v.tipo==='rutina'){
         const fr=v.frecuencia||'diaria';
         if(fr==='semanal' && (!v.dias_semana || !v.dias_semana.length)) throw new Error('Elige al menos un día de la semana');
+        const tnorm=v.titulo.trim().toLowerCase();
+        if(STATE.rutinas.some(r=>r.usuario_id===uid && r.activo!==false && (r.titulo||'').trim().toLowerCase()===tnorm))
+          throw new Error('Ya existe una rutina con ese nombre. Usa otro nombre o edita/elimina la existente.');
         const r=await db.rpc('gpr2_crear_rutina',{p_pin:SESSION.pin,p_usuario_id:uid,p_titulo:v.titulo.trim(),
           p_frecuencia:fr, p_dias_semana: fr==='semanal'? v.dias_semana : null, p_dia_mes: fr==='mensual'? parseInt(v.dia_mes,10): null});
         if(r.error) throw r.error;
