@@ -301,9 +301,17 @@ async function loadData(){
   const r2=await db.rpc('gpr2_generar_rutinas_hoy',{p_hoy:hoy});
   if(r2.error) console.warn('generar_rutinas:',r2.error.message);
 
+  // Carga ACOTADA de tareas: [mes seleccionado] + [semana actual y en adelante]
+  // + [vencidas/prorrogas de cualquier fecha]. Evita traer todo el historico.
+  const per = PERIODO || hoy.slice(0,7);
+  const _y=+per.slice(0,4), _m=+per.slice(5); const _last=new Date(_y,_m,0).getDate();
+  const mesIni = per+'-01', mesFin = per+'-'+String(_last).padStart(2,'0');
+  const semIni = semanaRango().desde;   // lunes de la semana actual (cubre hoy y esta semana)
+  const filtroTareas = 'and(fecha.gte.'+mesIni+',fecha.lte.'+mesFin+'),fecha.gte.'+semIni+',estado.in.(vencida,prorroga_solicitada)';
+
   const [usuarios,tareas,cierres,prorrogas,procesos,proyCierre,rutinas,proyectos,proysol]=await Promise.all([
     db.from('gpr2_usuarios_publico').select('*').eq('activo',true),
-    fetchPaged(()=>db.from('gpr2_tareas').select('*').eq('activo',true)),
+    fetchPaged(()=>db.from('gpr2_tareas').select('*').eq('activo',true).or(filtroTareas)),
     fetchPaged(()=>db.from('gpr2_cierre_dia').select('*')),
     db.from('gpr2_prorrogas').select('*').eq('estado','pendiente'),
     db.from('rev_procesos').select('*').eq('activo',true).order('orden'),
@@ -1185,7 +1193,7 @@ function fillPeriodSelect(){
   for(let m=1;m<=12;m++){ const val=y+'-'+String(m).padStart(2,'0'); const o=document.createElement('option'); o.value=val; o.textContent=MES[m-1]+' '+y; sel.appendChild(o); }
   PERIODO=hoyStr().slice(0,7);
   if([...sel.options].some(o=>o.value===PERIODO)) sel.value=PERIODO; else { sel.value=sel.options[0].value; PERIODO=sel.value; }
-  sel.addEventListener('change',e=>{ PERIODO=e.target.value; render(); });
+  sel.addEventListener('change',async e=>{ PERIODO=e.target.value; try{ await refrescar(); }catch(_){ render(); } });
 }
 
 async function doLogin(){
