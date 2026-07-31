@@ -218,6 +218,7 @@ const SESSION={pin:null,id:null,nombre:null,rol:null};
 const STATE={usuarios:[],tareas:[],cierres:[],prorrogas:[],procesos:[],proyCierre:[],rutinas:[],proyectos:[],proysol:[]};
 let expandedProy=new Set();
 let proyFiltro='';
+let proyCat='';   // filtro de clasificacion desde el Dashboard (enproceso/concluido/sincomenzar/cancelado/riesgo/'')
 let PERIODO=null, currentView=null, supUser=null;
 let miVista='hoy'; // 'hoy' | 'semana' | 'mes'  (vista de Mi dia)
 const MES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -345,7 +346,7 @@ function renderTabs(){
   tabsForRol(SESSION.rol).forEach(([id,lbl])=>{
     const b=document.createElement('button'); b.className='tab'+(currentView===id?' on':''); b.textContent=lbl;
     if(id==='solicitudes'){ const n=STATE.prorrogas.length+STATE.proysol.length; if(n) b.textContent=lbl+' ('+n+')'; }
-    b.addEventListener('click',()=>{ currentView=id; render(); });
+    b.addEventListener('click',()=>{ currentView=id; proyCat=''; render(); });
     cont.appendChild(b);
   });
 }
@@ -364,37 +365,36 @@ function render(){
 /* =====================================================================
    VISTA: DASHBOARD (panel ejecutivo, se calcula de gpr2_proyectos)
    ===================================================================== */
-function statCard(k,v,col,soft,icon){
-  return '<div class="stat dash">'+
+function statCard(k,v,col,soft,icon,cat){
+  const clk = cat? ' data-dashcat="'+cat+'" style="cursor:pointer"' : '';
+  return '<div class="stat dash"'+clk+' title="'+(cat?'Ver estos proyectos':'')+'">'+
     '<div class="sdeco" style="background:'+soft+'"></div>'+
     '<div class="sicon" style="background:'+soft+';color:'+col+'">'+icon+'</div>'+
     '<div class="v" style="color:'+col+'">'+v+'</div>'+
-    '<div class="k">'+esc(k)+'</div></div>';
+    '<div class="k">'+esc(k)+(cat?' <span style="opacity:.45;font-weight:700">›</span>':'')+'</div></div>';
 }
 function viewDashboard(){
   const ps=STATE.proyectos;
   const done=['Terminado','Completado','Cerrado','Finalizado'];
-  const hoy=hoyStr();
   let concluidos=0, cancelados=0, enProceso=0, sinComenzar=0, enRiesgo=0;
   ps.forEach(p=>{
-    const a=avanceProyecto(p); const st=(p.status||'').trim();
-    if(st==='Cancelado'){ cancelados++; return; }
-    if(done.includes(st) || a.p===100){ concluidos++; return; }
-    if(a.p==null || a.p===0) sinComenzar++; else enProceso++;
-    const vencido = p.termino && p.termino<hoy;
-    const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
-    if(vencido||atorado) enRiesgo++;
+    const c=clasifProyecto(p);
+    if(c.cat==='cancelado') cancelados++;
+    else if(c.cat==='concluido') concluidos++;
+    else if(c.cat==='sincomenzar') sinComenzar++;
+    else enProceso++;
+    if(c.riesgo) enRiesgo++;
   });
   const avs=ps.map(p=>avanceProyecto(p).p).filter(v=>v!=null);
   const avance=avs.length?Math.round(avs.reduce((a,b)=>a+b,0)/avs.length):0;
   let h='<div class="stats">'+
-    statCard('Proyectos', ps.length, 'var(--green)', '#E8EFFF', '▦')+
-    statCard('En proceso', enProceso, 'var(--accent)', '#E8EFFF', '◴')+
-    statCard('Concluidos', concluidos, 'var(--ok)', '#E3F6EA', '✓')+
-    statCard('Sin comenzar', sinComenzar, 'var(--muted)', '#eef2f8', '○')+
+    statCard('Proyectos', ps.length, 'var(--green)', '#E8EFFF', '▦','todos')+
+    statCard('En proceso', enProceso, 'var(--accent)', '#E8EFFF', '◴','enproceso')+
+    statCard('Concluidos', concluidos, 'var(--ok)', '#E3F6EA', '✓','concluido')+
+    statCard('Sin comenzar', sinComenzar, 'var(--muted)', '#eef2f8', '○','sincomenzar')+
     statCard('Avance global', avance+'%', color(avance), '#FCF1DC', '↗')+
-    statCard('En riesgo', enRiesgo, enRiesgo?'var(--bad)':'var(--ok)', '#FCE4EC', '◆')+
-    (cancelados?statCard('Cancelados', cancelados, 'var(--muted)', '#eef2f8', '⊘'):'')+
+    statCard('En riesgo', enRiesgo, enRiesgo?'var(--bad)':'var(--ok)', '#FCE4EC', '◆','riesgo')+
+    (cancelados?statCard('Cancelados', cancelados, 'var(--muted)', '#eef2f8', '⊘','cancelado'):'')+
     '</div>';
   // por estado
   const estados={}; ps.forEach(p=>{ const s=((p.status||'').trim())||'(sin status)'; estados[s]=(estados[s]||0)+1; });
@@ -603,23 +603,53 @@ function selectProceso(p){
   return s+'</select>';
 }
 function searchBar(){
-  return '<div style="padding:10px 20px;border-bottom:1px solid var(--line)"><input id="proySearch" placeholder="Buscar proyecto (número PR-, nombre, dueño, status)…" value="'+esc(proyFiltro||'')+'" style="width:100%;font-family:Arial,sans-serif;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:8px"></div>';
+  let chip='';
+  if(proyCat){ chip='<div style="margin-top:8px;font-family:Arial;font-size:12px;color:var(--muted)">Mostrando: <b style="color:var(--green)">'+catLabel(proyCat)+'</b> <button class="act ghost sm" data-clearcat="1" style="margin-left:6px;padding:2px 9px">✕ ver todos</button></div>'; }
+  return '<div style="padding:10px 20px;border-bottom:1px solid var(--line)"><input id="proySearch" placeholder="Buscar proyecto (número PR-, nombre, dueño, status)…" value="'+esc(proyFiltro||'')+'" style="width:100%;font-family:Arial,sans-serif;font-size:13px;padding:8px 11px;border:1px solid var(--line);border-radius:8px">'+chip+'</div>';
 }
 function aplicarFiltroProy(){
   const q=(proyFiltro||'').toLowerCase().trim();
+  const cat=proyCat||'';
   document.querySelectorAll('#view [data-search]').forEach(el=>{
-    el.style.display = (!q || (el.dataset.search||'').includes(q)) ? '' : 'none';
+    const okSearch = !q || (el.dataset.search||'').includes(q);
+    let okCat=true;
+    if(cat==='riesgo') okCat = el.dataset.riesgo==='1';
+    else if(cat && cat!=='todos') okCat = el.dataset.cat===cat;
+    el.style.display = (okSearch && okCat) ? '' : 'none';
   });
 }
+// Clasifica un proyecto igual que el Dashboard: cat + bandera de riesgo.
+function clasifProyecto(p){
+  const a=avanceProyecto(p); const st=(p.status||'').trim(); const hoy=hoyStr();
+  const done=['Terminado','Completado','Cerrado','Finalizado'];
+  let cat;
+  if(st==='Cancelado') cat='cancelado';
+  else if(done.includes(st)||a.p===100) cat='concluido';
+  else if(a.p==null||a.p===0) cat='sincomenzar';
+  else cat='enproceso';
+  let riesgo=false;
+  if(cat!=='cancelado' && cat!=='concluido'){
+    const vencido = p.termino && p.termino<hoy;
+    const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
+    riesgo = !!(vencido||atorado);
+  }
+  return {cat, riesgo, a};
+}
+const CATLBL={todos:'Todos',enproceso:'En proceso',concluido:'Concluidos',sincomenzar:'Sin comenzar',cancelado:'Cancelados',riesgo:'En riesgo'};
+function catLabel(c){ return CATLBL[c]||c; }
+const CATCOL={enproceso:'var(--accent)',concluido:'var(--ok)',sincomenzar:'var(--muted)',cancelado:'#8a94a6'};
 function projectCard(p,puedeEditar,puedeMarcarHito){
-  const a=avanceProyecto(p); const exp=expandedProy.has(p.id);
+  const a=avanceProyecto(p); const exp=expandedProy.has(p.id); const cl=clasifProyecto(p);
   const esGestion=SESSION.rol!=='colaborador';
   const bc=a.p==null?'var(--line)':color(a.p);
   const cod='PR-'+String(p.id).padStart(2,'0');
   const _s=esc((cod+' '+p.nombre+' '+usuarioNombre(p.owner_id)+' '+(p.status||'')).toLowerCase());
-  let h='<div class="trow" data-search="'+_s+'" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
+  let h='<div class="trow" data-search="'+_s+'" data-cat="'+cl.cat+'" data-riesgo="'+(cl.riesgo?1:0)+'" style="align-items:flex-start;flex-wrap:wrap"><div class="body">';
   h+='<div class="ti"><span style="display:inline-block;font-family:Arial;font-size:11.5px;font-weight:700;background:var(--accent);color:#fff;padding:1px 8px;border-radius:6px;margin-right:7px;vertical-align:middle;letter-spacing:.02em">'+cod+'</span>'+esc(p.nombre)+'</div>';
   h+='<div class="meta">Dueño: <b>'+esc(usuarioNombre(p.owner_id))+'</b> · '+esc(p.status||'—')+'</div>';
+  h+='<div style="margin-top:3px">'+
+     '<span style="font-family:Arial;font-size:11px;font-weight:700;padding:1.5px 9px;border-radius:10px;background:'+(CATCOL[cl.cat]||'var(--muted)')+';color:#fff">'+catLabel(cl.cat)+'</span>'+
+     (cl.riesgo?' <span style="font-family:Arial;font-size:11px;font-weight:700;padding:1.5px 9px;border-radius:10px;background:var(--bad);color:#fff">⚠ En riesgo</span>':'')+'</div>';
   h+='<div class="meta">Inicio: <b>'+(p.inicio?fmtFecha(p.inicio):'—')+'</b> · Término: <b>'+(p.termino?fmtFecha(p.termino):'—')+'</b></div>';
   h+='<div style="display:flex;align-items:center;gap:10px;margin-top:6px">'+
      '<div style="flex:1;max-width:240px;height:9px;border-radius:6px;background:#e9e4d8;overflow:hidden"><i style="display:block;height:100%;width:'+(a.p==null?0:a.p)+'%;background:'+bc+'"></i></div>'+
@@ -757,6 +787,10 @@ function bindViewEvents(){
   const ps=v.querySelector('#proySearch');
   if(ps){ ps.addEventListener('input',e=>{ proyFiltro=e.target.value; aplicarFiltroProy(); }); }
   aplicarFiltroProy();
+  // Dashboard: clic en una tarjeta de clasificacion -> listado de proyectos filtrado
+  v.querySelectorAll('[data-dashcat]').forEach(el=>el.addEventListener('click',()=>{ proyCat=el.dataset.dashcat; proyFiltro=''; currentView='proyectos'; render(); }));
+  // quitar el filtro de clasificacion
+  const cc=v.querySelector('[data-clearcat]'); if(cc) cc.addEventListener('click',()=>{ proyCat=''; render(); });
   // solicitar prorroga/cancelacion (proyecto o hito) + decidir
   v.querySelectorAll('[data-solpc]').forEach(el=>el.addEventListener('click',e=>{ const pr=e.target.dataset.solpc.split('|'); modalSolicitarPC(+pr[0], pr[1]||null, pr[2]); }));
   v.querySelectorAll('[data-decidirpc]').forEach(el=>el.addEventListener('click',e=>decidirPC(+e.target.dataset.decidirpc, e.target.dataset.ap==='1')));
