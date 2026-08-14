@@ -1010,16 +1010,24 @@ function modalCrearTarea(uid){
 }
 
 function modalReprogramar(tareaId){
+  const t=STATE.tareas.find(x=>x.id===tareaId);
+  const hoy=hoyStr();
+  const yaMismoDia=(f)=> !!(t && t.rutina_id && STATE.tareas.some(x=>x.rutina_id===t.rutina_id && x.fecha===f && x.activo!==false && x.id!==tareaId));
+  const desc = yaMismoDia(hoy)
+    ? 'Esta rutina <b>ya está en tus tareas de hoy</b>. Reprogramar a hoy solo <b>quita esta vencida</b> (no se duplica, no se pierde nada).'
+    : 'El día viejo ya quedó congelado; esto la mueve a una nueva fecha.';
   openModal({
     title:'Reprogramar tarea',
-    desc:'El día viejo ya quedó congelado; esto la mueve a una nueva fecha.',
-    fields:[{key:'fecha',label:'Nueva fecha',type:'date',value:hoyStr()}],
+    desc,
+    fields:[{key:'fecha',label:'Nueva fecha',type:'date',value:hoy}],
     ok:'Reprogramar',
     onSubmit:async(v)=>{
       if(!v.fecha) throw new Error('Elige una fecha');
+      const fusiona=yaMismoDia(v.fecha);
       const r=await db.rpc('gpr2_reprogramar',{p_pin:SESSION.pin,p_tarea_id:tareaId,p_fecha_nueva:v.fecha});
       if(r.error) throw r.error;
-      await refrescar(); toast('Tarea reprogramada ✓','ok');
+      await refrescar();
+      toast(fusiona ? 'Esa tarea ya estaba en ese día — se quitó la vencida (ya no queda pendiente) ✓' : 'Tarea reprogramada ✓','ok');
     }
   });
 }
