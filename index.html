@@ -631,7 +631,9 @@ function clasifProyecto(p){
   if(cat!=='cancelado' && cat!=='concluido'){
     const vencido = p.termino && p.termino<hoy;
     const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
-    riesgo = !!(vencido||atorado);
+    // NUEVO: en riesgo si un hito con fecha compromiso ya paso y no se hizo (etapas)
+    const hitoAtrasado = (Array.isArray(p.hitos)?p.hitos:[]).some(h=>h && h.fecha && h.fecha<hoy && !h.hecho && !h.cancelado);
+    riesgo = !!(vencido||atorado||hitoAtrasado);
   }
   return {cat, riesgo, a};
 }
@@ -681,9 +683,13 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
           '<button class="act danger sm" style="padding:2px 7px;font-size:10px" data-solpc="'+p.id+'|'+esc(ht.id)+'|cancelacion">cancelar</button>'
         : '';
       const quienChip=ht.quien?'<span style="font-family:Arial;font-size:11px;color:var(--accent);white-space:nowrap">👤 '+esc(ht.quien)+'</span>':'';
+      const atrasadoHito = ht.fecha && ht.fecha<hoyStr() && !ht.hecho && !cancel;
+      const fechaChip = ht.fecha
+        ? '<span style="font-family:Arial;font-size:11px;font-weight:'+(atrasadoHito?'700':'400')+';white-space:nowrap;color:'+(atrasadoHito?'var(--bad)':(ht.hecho?'var(--muted)':'var(--accent)'))+'">'+(atrasadoHito?'⚠ atrasado · ':'📅 ')+fmtFecha(ht.fecha)+'</span>'
+        : '';
       h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;flex-wrap:wrap">'+chk+
          '<span style="flex:1;min-width:120px;font-family:Arial;font-size:13px'+((ht.hecho||cancel)?';text-decoration:line-through;color:var(--muted)':'')+'">'+esc(ht.texto||'')+'</span>'+
-         quienChip+badge+'<span class="rowbtns">'+acts+'</span></div>';
+         fechaChip+quienChip+badge+'<span class="rowbtns">'+acts+'</span></div>';
     });
     h+='</div>';
   }
@@ -807,16 +813,18 @@ function teamRowHTML(nombre,resp){
     '<input class="teamresp" placeholder="responsabilidad" value="'+esc(resp||'')+'" style="flex:1">'+
     '<button type="button" class="teamdel act danger sm" title="Quitar">×</button></div>';
 }
-function hitoRowHTML(texto,hitoJson,locked,quien){
+function hitoRowHTML(texto,hitoJson,locked,quien,fecha){
   if(locked){
-    return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
-      '<span style="flex:1;font-family:Arial;font-size:13px;color:var(--muted)">'+esc(texto||'')+'</span>'+
+    return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center;flex-wrap:wrap">'+
+      '<span style="flex:1;min-width:140px;font-family:Arial;font-size:13px;color:var(--muted)">'+esc(texto||'')+'</span>'+
+      (fecha?'<span class="tagrut" style="white-space:nowrap">📅 '+fmtFecha(fecha)+'</span>':'')+
       (quien?'<span class="tagrut" style="white-space:nowrap">'+esc(quien)+'</span>':'')+
       '<span style="font-size:10px;color:var(--muted);font-family:Arial;white-space:nowrap">existente</span></div>';
   }
-  return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center">'+
-    '<input class="hitotext" placeholder="hito / entregable" value="'+esc(texto||'')+'" style="flex:1">'+
-    '<select class="hitoquien" data-cur="'+esc(quien||'')+'" title="Responsable de este paso" style="flex:0 0 132px;font-family:Arial;font-size:12px"><option value="">— Quién —</option>'+(quien?'<option value="'+esc(quien)+'" selected>'+esc(quien)+'</option>':'')+'</select>'+
+  return '<div class="hitorow" data-h="'+esc(hitoJson||'')+'" style="display:flex;gap:6px;margin-bottom:5px;align-items:center;flex-wrap:wrap">'+
+    '<input class="hitotext" placeholder="hito / entregable" value="'+esc(texto||'')+'" style="flex:1 1 150px">'+
+    '<input class="hitofecha" type="date" title="Fecha compromiso de este hito" value="'+esc(fecha||'')+'" style="flex:0 0 138px;font-family:Arial;font-size:12px">'+
+    '<select class="hitoquien" data-cur="'+esc(quien||'')+'" title="Responsable de este paso" style="flex:0 0 124px;font-family:Arial;font-size:12px"><option value="">— Quién —</option>'+(quien?'<option value="'+esc(quien)+'" selected>'+esc(quien)+'</option>':'')+'</select>'+
     '<button type="button" class="hitodel act danger sm" title="Quitar">×</button></div>';
 }
 function openModal(opts){
@@ -884,8 +892,8 @@ function openModal(opts){
   // widgets de hitos (agregar uno por uno)
   opts.fields.filter(f=>f.type==='hitos').forEach(f=>{
     const list=document.getElementById('f_'+f.key+'_list');
-    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht), f.addOnly, ht.quien)); });
-    const addH=()=>{ const inp=document.getElementById('f_'+f.key+'_in'); const t=(inp.value||'').trim(); if(!t) return; list.insertAdjacentHTML('beforeend', hitoRowHTML(t,'',false,'')); inp.value=''; inp.focus(); refreshQuien(); };
+    (f.value||[]).forEach(ht=>{ list.insertAdjacentHTML('beforeend', hitoRowHTML(ht.texto, JSON.stringify(ht), f.addOnly, ht.quien, ht.fecha)); });
+    const addH=()=>{ const inp=document.getElementById('f_'+f.key+'_in'); const t=(inp.value||'').trim(); if(!t) return; list.insertAdjacentHTML('beforeend', hitoRowHTML(t,'',false,'','')); inp.value=''; inp.focus(); refreshQuien(); };
     document.getElementById('f_'+f.key+'_add').addEventListener('click',addH);
     document.getElementById('f_'+f.key+'_in').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); addH(); } });
     list.addEventListener('click',e=>{ if(e.target.classList.contains('hitodel')) e.target.closest('.hitorow').remove(); });
@@ -905,10 +913,12 @@ function openModal(opts){
         vals[f.key]=[...list.querySelectorAll('.hitorow')].map((r,i)=>{
           const inp=r.querySelector('.hitotext');
           const selQ=r.querySelector('.hitoquien');
+          const inpF=r.querySelector('.hitofecha');
           let base={}; if(r.dataset.h){ try{ base=JSON.parse(r.dataset.h); }catch(_){} }
           const texto = inp ? (inp.value||'').trim() : (base.texto||'');
           const quien = selQ ? (selQ.value||'') : (base.quien||'');
-          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:''}, base, {texto, quien});
+          const fecha = inpF ? (inpF.value||'') : (base.fecha||'');
+          return Object.assign({id:base.id||('h'+Date.now()+i), hecho:false, quien:'', fecha:''}, base, {texto, quien, fecha});
         }).filter(x=>x.texto);
         return;
       }
