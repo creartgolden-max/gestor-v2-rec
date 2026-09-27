@@ -935,12 +935,21 @@ function closeModal(){ document.getElementById('modalWrap').classList.add('hidde
 async function refrescar(){ await loadData(); render(); }
 
 async function marcarHecha(tareaId,hecha){
+  // Refleja la marca AL INSTANTE en el estado local y re-pinta (sin recarga de red).
+  // Antes se hacia await refrescar() por cada clic: al marcar varias rapido, esos
+  // recargados competian y uno atrasado dejaba casillas "sin palomear" aunque SI
+  // se habian guardado (el % si llegaba a 100). Esto lo elimina.
+  const t=STATE.tareas.find(x=>x.id===tareaId);
+  const prev=t?t.estado:null;
+  if(t){ t.estado = hecha?'hecha':'pendiente'; render(); }
   try{
     const {error}=await db.rpc('gpr2_marcar_hecha',{p_pin:SESSION.pin,p_tarea_id:tareaId,p_hecha:hecha});
     if(error) throw error;
-    await refrescar();
-    toast(hecha?'Tarea marcada ✓':'Tarea desmarcada','ok');
-  }catch(err){ console.error(err); toast('No se pudo: '+(err.message||err),'err'); await refrescar(); }
+  }catch(err){
+    console.error(err);
+    if(t){ t.estado=prev; render(); }   // no se guardo -> revertir para que NO parezca hecha
+    toast('No se pudo guardar la marca — vuelve a intentarlo: '+(err.message||err),'err');
+  }
 }
 
 async function borrarTarea(tareaId,rutinaId){
