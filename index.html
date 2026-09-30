@@ -630,10 +630,17 @@ function clasifProyecto(p){
   let riesgo=false;
   if(cat!=='cancelado' && cat!=='concluido'){
     const vencido = p.termino && p.termino<hoy;
-    const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
-    // NUEVO: en riesgo si un hito con fecha compromiso ya paso y no se hizo (etapas)
-    const hitoAtrasado = (Array.isArray(p.hitos)?p.hitos:[]).some(h=>h && h.fecha && h.fecha<hoy && !h.hecho && !h.cancelado);
-    riesgo = !!(vencido||atorado||hitoAtrasado);
+    const hitos=(Array.isArray(p.hitos)?p.hitos:[]);
+    const tieneFechasHito = hitos.some(h=>h && h.fecha);
+    const hitoAtrasado = hitos.some(h=>h && h.fecha && h.fecha<hoy && !h.hecho && !h.cancelado);
+    if(tieneFechasHito){
+      // Proyecto por ETAPAS: el riesgo lo mandan las fechas compromiso, no el % crudo.
+      riesgo = !!(vencido || hitoAtrasado);
+    } else {
+      // Sin fechas de etapa: heuristica vieja (atorado = <50% y ya inicio).
+      const atorado = a.p!=null && a.p<50 && p.inicio && p.inicio<hoy && !vencido;
+      riesgo = !!(vencido || atorado);
+    }
   }
   return {cat, riesgo, a};
 }
