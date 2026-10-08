@@ -596,6 +596,19 @@ function integrantesList(p){
 function integrantesTexto(p){
   return integrantesList(p).map(m=>m.nombre+(m.resp?(' | '+m.resp):'')).join('\n');
 }
+function normNom(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim(); }
+function personaCoincide(texto, nombre){ const t=normNom(texto); if(!t) return false; const pn=normNom(nombre).split(/\s+/)[0]; if(!pn) return false; return (' '+t+' ').indexOf(' '+pn+' ')>=0; }
+function soyIntegrante(p){ return integrantesList(p).some(m=>personaCoincide(m.nombre, SESSION.nombre)); }
+function hitosDondeParticipo(nombre){ const out=[]; const own=new Set(); STATE.proyectos.forEach(p=>{ if(p.owner_id===SESSION.id||soyIntegrante(p)) own.add(p.id); }); STATE.proyectos.forEach(p=>{ if(own.has(p.id)) return; (Array.isArray(p.hitos)?p.hitos:[]).forEach(ht=>{ if(ht.quien && !ht.cancelado && personaCoincide(ht.quien, nombre)) out.push({p,ht}); }); }); return out; }
+function hitoParticipoRow(p,ht){
+  const cod='PR-'+String(p.id).padStart(2,'0');
+  const atras = ht.fecha && ht.fecha<hoyStr() && !ht.hecho && !ht.cancelado;
+  const estado = ht.hecho?'<span class="pct" style="font-size:12px;color:var(--ok)">✓ hecho</span>':(atras?'<span class="pct" style="font-size:12px;color:var(--bad)">⚠ atrasado</span>':'<span class="pct" style="font-size:12px;color:var(--accent)">pendiente</span>');
+  return '<div class="trow" style="align-items:flex-start"><div class="body">'+
+    '<div class="ti"><span style="display:inline-block;font-family:Arial;font-size:11px;font-weight:700;background:var(--accent);color:#fff;padding:1px 7px;border-radius:6px;margin-right:6px;vertical-align:middle">'+cod+'</span>'+esc(ht.texto||'')+'</div>'+
+    '<div class="meta">Proyecto: <b>'+esc(p.nombre)+'</b> · Dueño: '+esc(usuarioNombre(p.owner_id))+(ht.fecha?(' · '+(atras?'⚠ ':'📅 ')+fmtFecha(ht.fecha)):'')+'</div>'+
+    '</div>'+estado+'</div>';
+}
 function selectProceso(p){
   let s='<select data-asignaproc="'+p.id+'" style="font-family:Arial;font-size:12px;padding:5px 8px;border:1px solid var(--line);border-radius:7px">';
   s+='<option value="">(sin proceso)</option>';
@@ -716,14 +729,22 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
 }
 function viewProyectos(){
   const rol=SESSION.rol;
-  // ---- colaborador: solo sus proyectos ----
+  // ---- colaborador: sus proyectos (dueño o integrante) + hitos donde participa ----
   if(rol==='colaborador'){
-    const mios=STATE.proyectos.filter(p=>p.owner_id===SESSION.id);
-    let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos</small>'+mios.length+' proyecto(s)</div>'+
+    const mios=STATE.proyectos.filter(p=>p.owner_id===SESSION.id || soyIntegrante(p));
+    let h='<div class="card"><div class="chead"><div class="t"><small>Mis proyectos (propios y en equipo)</small>'+mios.length+' proyecto(s)</div>'+
       '<button class="act gold" data-newproy="1">+ Nuevo proyecto</button></div>'+searchBar()+'<div class="clist">';
-    if(mios.length) mios.forEach(p=>{ h+=projectCard(p,true,true); });
-    else h+='<div class="empty">No tienes proyectos aún. Crea uno con "+ Nuevo proyecto".</div>';
-    return h+'</div></div>';
+    if(mios.length) mios.forEach(p=>{ const esD=p.owner_id===SESSION.id; h+=projectCard(p, esD, esD); });
+    else h+='<div class="empty">No tienes proyectos propios ni en equipo. Crea uno con "+ Nuevo proyecto".</div>';
+    h+='</div></div>';
+    const part=hitosDondeParticipo(SESSION.nombre);
+    if(part.length){
+      part.sort((a,b)=>((a.ht.fecha||'9999')<(b.ht.fecha||'9999')?-1:1));
+      h+='<div class="card"><div class="chead"><div class="t"><small>Participación</small>Hitos donde participo · '+part.length+'</div></div><div class="clist">';
+      part.forEach(x=>{ h+=hitoParticipoRow(x.p,x.ht); });
+      h+='</div></div>';
+    }
+    return h;
   }
   // ---- admin / direccion ----
   const esDir=rol==='direccion';
