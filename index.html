@@ -604,7 +604,11 @@ function hitoParticipoRow(p,ht){
   const cod='PR-'+String(p.id).padStart(2,'0');
   const atras = ht.fecha && ht.fecha<hoyStr() && !ht.hecho && !ht.cancelado;
   const estado = ht.hecho?'<span class="pct" style="font-size:12px;color:var(--ok)">✓ hecho</span>':(atras?'<span class="pct" style="font-size:12px;color:var(--bad)">⚠ atrasado</span>':'<span class="pct" style="font-size:12px;color:var(--accent)">pendiente</span>');
-  return '<div class="trow" style="align-items:flex-start"><div class="body">'+
+  // El involucrado puede marcar su propio hito (es el "quien" de este hito por definición de hitosDondeParticipo).
+  const chk = ht.cancelado
+    ? '<span style="width:18px;text-align:center">✕</span>'
+    : '<input type="checkbox" style="width:18px;height:18px;accent-color:var(--green);margin-right:8px;flex:none" data-hito="'+p.id+'|'+esc(ht.id)+'" '+(ht.hecho?'checked':'')+'>';
+  return '<div class="trow" style="align-items:flex-start">'+chk+'<div class="body">'+
     '<div class="ti"><span style="display:inline-block;font-family:Arial;font-size:11px;font-weight:700;background:var(--accent);color:#fff;padding:1px 7px;border-radius:6px;margin-right:6px;vertical-align:middle">'+cod+'</span>'+esc(ht.texto||'')+'</div>'+
     '<div class="meta">Proyecto: <b>'+esc(p.nombre)+'</b> · Dueño: '+esc(usuarioNombre(p.owner_id))+(ht.fecha?(' · '+(atras?'⚠ ':'📅 ')+fmtFecha(ht.fecha)):'')+'</div>'+
     '</div>'+estado+'</div>';
@@ -691,11 +695,14 @@ function projectCard(p,puedeEditar,puedeMarcarHito){
     hitos.forEach(ht=>{
       const cancel=!!ht.cancelado;
       const sps=puedeMarcarHito?solPendDe(p.id,ht.id):[];
+      // El involucrado (quien del hito) puede marcar SU hito aunque no sea dueño del proyecto.
+      const miHito = SESSION.rol==='colaborador' && !cancel && !!ht.quien && personaCoincide(ht.quien, SESSION.nombre);
+      const puedoMarcarEste = puedeMarcarHito || miHito;
       let badge='';
       if(cancel) badge+='<span class="tagrut" style="color:var(--bad)">cancelado</span>';
       else if(ht.prorroga_hasta) badge+='<span class="tagrut">⏳ prórroga: '+fmtFecha(ht.prorroga_hasta)+'</span>';
       sps.forEach(s=>{ badge+=' <span class="tagad">⏳ '+(s.tipo==='prorroga'?'prórroga':'cancelación')+' solicitada</span>'; });
-      const chk=(puedeMarcarHito && !cancel)
+      const chk=(puedoMarcarEste && !cancel)
         ? '<input type="checkbox" style="width:18px;height:18px;accent-color:var(--green)" data-hito="'+p.id+'|'+esc(ht.id)+'" '+(ht.hecho?'checked':'')+'>'
         : '<span style="width:18px;text-align:center">'+(cancel?'✕':(ht.hecho?'✓':'·'))+'</span>';
       const acts=(puedeMarcarHito && !cancel && !sps.length)
